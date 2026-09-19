@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: newgo-learn-auto
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    plan: free
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.0
+      - key: FB_PAGE_ACCESS_TOKEN
+        sync: false
+      - key: FB_VERIFY_TOKEN
+        value: newgo_learn_secret_2026
+      - key: FB_PAGE_ID
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
+      - key: DEFAULT_POST_TOPIC
+        value: AI Tools & Technologies, Smart Tips & Useful Tricks, AI & Work Automation, Learning Resources, Productivity & Digital Skills, and New Ideas for the Future
+      - key: POST_SCHEDULE_HOUR
+        value: "10"
+      - key: POST_SCHEDULE_MINUTE
+        value: "0"
+      - key: IMAGE_PROVIDER
+        value: pollinations

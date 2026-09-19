@@ -1,0 +1,146 @@
+import json
+import logging
+from typing import Dict, List, Tuple
+from google import genai
+from google.genai import types
+import config
+
+logger = logging.getLogger(__name__)
+
+# Simple in-memory conversation memory for active Messenger users (sender_id -> messages list)
+_conversation_history: Dict[str, List[Dict[str, str]]] = {}
+MAX_HISTORY_PER_USER = 6
+
+
+def get_gemini_client() -> genai.Client | None:
+    """Returns an initialized Gemini Client if API key is present."""
+    if not config.GEMINI_API_KEY or config.GEMINI_API_KEY == "your_gemini_api_key_here":
+        logger.warning("GEMINI_API_KEY is not configured.")
+        return None
+    try:
+        return genai.Client(api_key=config.GEMINI_API_KEY)
+    except Exception as e:
+        logger.error(f"Error initializing Gemini client: {e}")
+        return None
+
+
+def read_knowledge_base() -> str:
+    """Reads the knowledge base file dynamically."""
+    if config.KNOWLEDGE_BASE_FILE.exists():
+        try:
+            with open(config.KNOWLEDGE_BASE_FILE, "r", encoding="utf-8") as f:
+                return f.read().strip()
+        except Exception as e:
+            logger.error(f"Failed to read knowledge base file: {e}")
+    return "ফেসবুক পেজ অফিসিয়াল সাপোর্ট।"
+
+
+def generate_chat_reply(sender_id: str, user_message: str) -> str:
+    """
+    Generates a personalized, context-aware reply for a Facebook Messenger message.
+    Uses knowledge_base.txt as the factual grounding.
+    """
+    client = get_gemini_client()
+    if not client:
+        return "আসসালামু আলাইকুম। আমাদের সাথে যোগাযোগ করার জন্য ধন্যবাদ। এই মুহূর্তে আমাদের এআই সার্ভারে সংযোগ হচ্ছে না। আমাদের এডমিন প্রতিনিধি খুব শীঘ্রই আপনার মেসেজের উত্তর দিবেন।"
+
+    knowledge = read_knowledge_base()
+    system_instruction = f"""
+আপনি এই ফেসবুক পেজের একজন অত্যন্ত বিনয়ী, দক্ষ ও প্রফেশনাল এআই কাস্টমার সাপোর্ট অ্যাসিস্ট্যান্ট।
+নিচে আপনার পেজ ও প্রতিষ্ঠানের নলেজবেস (Knowledge Base) দেওয়া হলো:
+
+=== নলেজবেস শুরু ===
+{knowledge}
+=== নলেজবেস শেষ ===
+
+নিয়মাবলী:
+১. সবসময় সুন্দর, মার্জিত এবং আন্তরিক ভাষায় বাংলায় কথা বলবেন।
+২. আপনার উত্তরের ভিত্তি হতে হবে উপরের নলেজবেস।
+৩. যদি কোনো তথ্য বা প্রশ্নের উত্তর এই নলেজবেসে না থাকে, তবে কাল্পনিক কিছু বানিয়ে বলবেন না। বরং বিনয়ের সাথে বলবেন: "ধন্যবাদ আপনার বার্তার জন্য। এই বিষয়ে বিস্তারিত তথ্যের জন্য আমাদের এডমিন প্রতিনিধি খুব শীঘ্রই আপনার সাথে যোগাযোগ করবেন। অনুগ্রহ করে একটু অপেক্ষা করুন।"
+৪. উত্তর সংক্ষিপ্ত, স্পষ্ট ও টু-দ্য-পয়েন্ট রাখবেন।
+"""
+
+    # Retrieve and update user conversation history
+    history = _conversation_history.get(sender_id, [])
+    
+    # Build contents payload
+    contents = []
+    for turn in history:
+        role = "user" if turn["role"] == "user" else "model"
+        contents.append(types.Content(role=role, parts=[types.Part.from_text(text=turn["text"])]))
+    
+    # Add current user message
+    contents.append(types.Content(role="user", parts=[types.Part.from_text(text=user_message)]))
+
+    try:
+        response = client.models.generate_content(
+            model=config.GEMINI_MODEL,
+            contents=contents,
+            config=types.GenerateContentConfig(
+                system_instruction=system_instruction,
+                temperature=0.7,
+                max_output_tokens=600,
+            ),
+        )
+        reply_text = response.text.strip() if response.text else "ধন্যবাদ। আপনার বার্তাটি পেয়েছি।"
+
+        # Save to history
+        history.append({"role": "user", "text": user_message})
+        history.append({"role": "model", "text": reply_text})
+        if len(history) > MAX_HISTORY_PER_USER * 2:
+            history = history[-(MAX_HISTORY_PER_USER * 2):]
+        _conversation_history[sender_id] = history
+
+        return reply_text
+    except Exception as e:
+        logger.error(f"Gemini API chat error: {e}")
+        return "আসসালামু আলাইকুম। আপনার মেসেজের জন্য ধন্যবাদ। আমাদের প্রতিনিধি শীঘ্রই আপনার সাথে যোগাযোগ করবেন।"
+
+
+def generate_page_post(topic_hint: str = "") -> Tuple[str, str, str]:
+    """
+    Generates an engaging Facebook post caption, an image search keyword,
+    and a visual prompt for image generation.
+    Returns: (caption, image_keyword, visual_prompt)
+    """
+    client = get_gemini_client()
+    topic = topic_hint or config.DEFAULT_POST_TOPIC
+
+    if not client:
+        # Fallback post if Gemini key is not set
+        caption = f"আসসালামু আলাইকুম। আশা করি সবাই ভালো ও সুস্থ আছেন।\n\nআজকের ভাবনা: উত্তম চরিত্র ও সুন্দর ব্যবহারের মাধ্যমেই মানুষের মন জয় করা যায়।\n\n#DailyReminder #Sunnah #Bangladesh"
+        return caption, "peaceful morning nature sunrise", "A serene scenic sunrise over peaceful green river and nature"
+
+    prompt = f"""
+তুমি একজন দক্ষ ফেসবুক কনটেন্ট ক্রিয়েটর।
+নিচের বিষয়ের ওপর ভিত্তি করে একটি অত্যন্ত আকর্ষণীয়, শিক্ষণীয় ও এনগেজিং ফেসবুক পোস্ট তৈরি করো:
+বিষয়: "{topic}"
+
+আউটপুটটি অবশ্যই সম্পূর্ণ ভ্যালিড JSON ফরম্যাটে হতে হবে (অন্য কোনো অতিরিক্ত টেক্সট বা মার্কডাউন ছাড়া)।
+JSON স্কিমা:
+{{
+  "caption": "সম্পূর্ণ ফেসবুক পোস্টের ক্যাপশন। শুরুতে সালাম, মাঝে আকর্ষণীয় মূল বার্তা ও উপদেশ, এবং শেষে ৩-৫টি ট্রেন্ডিং হ্যাশট্যাগ (যেমন #Sunnah #Peace ইত্যাদি)। ইমোজি ব্যবহার করবে।",
+  "image_keyword": "ছবি সার্চ করার জন্য ২-৪ শব্দের ইংরেজি কিওয়ার্ড (যেমন: 'peaceful sunrise nature', 'green forest landscape', 'ancient beautiful architecture')",
+  "visual_prompt": "ছবি জেনারেট করার জন্য বিস্তারিত ইংরেজি প্রম্পট (যেমন: 'A breathtaking sunrise over calm morning mist, serene aesthetic landscape, soft cinematic morning light, photorealistic 8k')"
+}}
+"""
+
+    try:
+        response = client.models.generate_content(
+            model=config.GEMINI_MODEL,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                temperature=0.8,
+                response_mime_type="application/json",
+            ),
+        )
+
+        data = json.loads(response.text)
+        caption = data.get("caption", "").strip()
+        keyword = data.get("image_keyword", "peaceful nature landscape").strip()
+        visual_prompt = data.get("visual_prompt", keyword).strip()
+        return caption, keyword, visual_prompt
+    except Exception as e:
+        logger.error(f"Gemini API post generation error: {e}")
+        fallback_caption = f"আসসালামু আলাইকুম! 🚀\n\nপ্রযুক্তির যুগে নিজেকে একধাপ এগিয়ে রাখতে প্রতিদিন নতুন নতুন ডিজিটাল স্কিলস ও এআই টুলস শিখুন। স্মার্ট কাজই আপনাকে সফল করে তুলবে।\n\n#AITools #Automation #Productivity #NewGoLearn"
+        return fallback_caption, "futuristic artificial intelligence workspace technology", "A modern futuristic workspace with glowing artificial intelligence holographic screens, high-tech aesthetic, 8k"
