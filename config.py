@@ -14,7 +14,7 @@ FB_GRAPH_API_VERSION = os.getenv("FB_GRAPH_API_VERSION", "v21.0").strip()
 
 # Gemini AI Configuration
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash").strip()
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-flash-lite-latest").strip()
 
 # Auto-Posting Configuration (AI, Automation, Productivity & Digital Skills)
 DEFAULT_POST_TOPIC = os.getenv(

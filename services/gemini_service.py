@@ -72,29 +72,42 @@ def generate_chat_reply(sender_id: str, user_message: str) -> str:
     # Add current user message
     contents.append(types.Content(role="user", parts=[types.Part.from_text(text=user_message)]))
 
-    try:
-        response = client.models.generate_content(
-            model=config.GEMINI_MODEL,
-            contents=contents,
-            config=types.GenerateContentConfig(
-                system_instruction=system_instruction,
-                temperature=0.7,
-                max_output_tokens=600,
-            ),
-        )
-        reply_text = response.text.strip() if response.text else "ধন্যবাদ। আপনার বার্তাটি পেয়েছি।"
+    # List of candidate models to try in order
+    candidate_models = []
+    for m in [config.GEMINI_MODEL, "gemini-flash-lite-latest", "gemini-flash-latest", "gemini-3.5-flash-lite", "gemini-3.6-flash"]:
+        if m and m not in candidate_models:
+            candidate_models.append(m)
 
+    reply_text = None
+    for model_name in candidate_models:
+        try:
+            logger.info(f"Trying Gemini model '{model_name}' for chat reply...")
+            response = client.models.generate_content(
+                model=model_name,
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    system_instruction=system_instruction,
+                    temperature=0.7,
+                    max_output_tokens=600,
+                ),
+            )
+            if response.text and response.text.strip():
+                reply_text = response.text.strip()
+                break
+        except Exception as e:
+            logger.warning(f"Model '{model_name}' failed with error: {e}. Trying next candidate...")
+
+    if reply_text:
         # Save to history
         history.append({"role": "user", "text": user_message})
         history.append({"role": "model", "text": reply_text})
         if len(history) > MAX_HISTORY_PER_USER * 2:
             history = history[-(MAX_HISTORY_PER_USER * 2):]
         _conversation_history[sender_id] = history
-
         return reply_text
-    except Exception as e:
-        logger.error(f"Gemini API chat error: {e}")
-        return "আসসালামু আলাইকুম। আপনার মেসেজের জন্য ধন্যবাদ। আমাদের প্রতিনিধি শীঘ্রই আপনার সাথে যোগাযোগ করবেন।"
+
+    logger.error("All candidate Gemini models failed for chat reply.")
+    return "আসসালামু আলাইকুম। আপনার মেসেজের জন্য ধন্যবাদ। আমাদের প্রতিনিধি শীঘ্রই আপনার সাথে যোগাযোগ করবেন।"
 
 
 def generate_page_post(topic_hint: str = "") -> Tuple[str, str, str]:
@@ -108,8 +121,8 @@ def generate_page_post(topic_hint: str = "") -> Tuple[str, str, str]:
 
     if not client:
         # Fallback post if Gemini key is not set
-        caption = f"আসসালামু আলাইকুম। আশা করি সবাই ভালো ও সুস্থ আছেন।\n\nআজকের ভাবনা: উত্তম চরিত্র ও সুন্দর ব্যবহারের মাধ্যমেই মানুষের মন জয় করা যায়।\n\n#DailyReminder #Sunnah #Bangladesh"
-        return caption, "peaceful morning nature sunrise", "A serene scenic sunrise over peaceful green river and nature"
+        caption = f"আসসালামু আলাইকুম! 🚀\n\nপ্রযুক্তির যুগে নিজেকে একধাপ এগিয়ে রাখতে প্রতিদিন নতুন নতুন ডিজিটাল স্কিলস ও এআই টুলস শিখুন। স্মার্ট কাজই আপনাকে সফল করে তুলবে।\n\n#AITools #Automation #Productivity #NewGoLearn"
+        return caption, "futuristic artificial intelligence workspace technology", "A modern futuristic workspace with glowing artificial intelligence holographic screens, high-tech aesthetic, 8k"
 
     prompt = f"""
 তুমি একজন দক্ষ ফেসবুক কনটেন্ট ক্রিয়েটর।
@@ -119,28 +132,37 @@ def generate_page_post(topic_hint: str = "") -> Tuple[str, str, str]:
 আউটপুটটি অবশ্যই সম্পূর্ণ ভ্যালিড JSON ফরম্যাটে হতে হবে (অন্য কোনো অতিরিক্ত টেক্সট বা মার্কডাউন ছাড়া)।
 JSON স্কিমা:
 {{
-  "caption": "সম্পূর্ণ ফেসবুক পোস্টের ক্যাপশন। শুরুতে সালাম, মাঝে আকর্ষণীয় মূল বার্তা ও উপদেশ, এবং শেষে ৩-৫টি ট্রেন্ডিং হ্যাশট্যাগ (যেমন #Sunnah #Peace ইত্যাদি)। ইমোজি ব্যবহার করবে।",
-  "image_keyword": "ছবি সার্চ করার জন্য ২-৪ শব্দের ইংরেজি কিওয়ার্ড (যেমন: 'peaceful sunrise nature', 'green forest landscape', 'ancient beautiful architecture')",
-  "visual_prompt": "ছবি জেনারেট করার জন্য বিস্তারিত ইংরেজি প্রম্পট (যেমন: 'A breathtaking sunrise over calm morning mist, serene aesthetic landscape, soft cinematic morning light, photorealistic 8k')"
+  "caption": "সম্পূর্ণ ফেসবুক পোস্টের ক্যাপশন। শুরুতে সালাম, মাঝে আকর্ষণীয় মূল বার্তা ও উপদেশ, এবং শেষে ৩-৫টি ট্রেন্ডিং হ্যাশট্যাগ (যেমন #AITools #Automation #Productivity ইত্যাদি)। ইমোজি ব্যবহার করবে।",
+  "image_keyword": "ছবি সার্চ করার জন্য ২-৪ শব্দের ইংরেজি কিওয়ার্ড (যেমন: 'futuristic artificial intelligence tech workspace', 'robot automation technology')",
+  "visual_prompt": "ছবি জেনারেট করার জন্য বিস্তারিত ইংরেজি প্রম্পট (যেমন: 'A modern futuristic technology workspace, glowing neon AI circuits, sleek robotic assistant, cinematic lighting, 8k')"
 }}
 """
 
-    try:
-        response = client.models.generate_content(
-            model=config.GEMINI_MODEL,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                temperature=0.8,
-                response_mime_type="application/json",
-            ),
-        )
+    candidate_models = []
+    for m in [config.GEMINI_MODEL, "gemini-flash-lite-latest", "gemini-flash-latest", "gemini-3.5-flash-lite", "gemini-3.6-flash"]:
+        if m and m not in candidate_models:
+            candidate_models.append(m)
 
-        data = json.loads(response.text)
-        caption = data.get("caption", "").strip()
-        keyword = data.get("image_keyword", "peaceful nature landscape").strip()
-        visual_prompt = data.get("visual_prompt", keyword).strip()
-        return caption, keyword, visual_prompt
-    except Exception as e:
-        logger.error(f"Gemini API post generation error: {e}")
-        fallback_caption = f"আসসালামু আলাইকুম! 🚀\n\nপ্রযুক্তির যুগে নিজেকে একধাপ এগিয়ে রাখতে প্রতিদিন নতুন নতুন ডিজিটাল স্কিলস ও এআই টুলস শিখুন। স্মার্ট কাজই আপনাকে সফল করে তুলবে।\n\n#AITools #Automation #Productivity #NewGoLearn"
-        return fallback_caption, "futuristic artificial intelligence workspace technology", "A modern futuristic workspace with glowing artificial intelligence holographic screens, high-tech aesthetic, 8k"
+    for model_name in candidate_models:
+        try:
+            logger.info(f"Trying Gemini model '{model_name}' for page post...")
+            response = client.models.generate_content(
+                model=model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    temperature=0.8,
+                    response_mime_type="application/json",
+                ),
+            )
+
+            data = json.loads(response.text)
+            caption = data.get("caption", "").strip()
+            keyword = data.get("image_keyword", "futuristic artificial intelligence workspace technology").strip()
+            visual_prompt = data.get("visual_prompt", keyword).strip()
+            if caption:
+                return caption, keyword, visual_prompt
+        except Exception as e:
+            logger.warning(f"Model '{model_name}' failed for post generation: {e}")
+
+    fallback_caption = f"আসসালামু আলাইকুম! 🚀\n\nপ্রযুক্তির যুগে নিজেকে একধাপ এগিয়ে রাখতে প্রতিদিন নতুন নতুন ডিজিটাল স্কিলস ও এআই টুলস শিখুন। স্মার্ট কাজই আপনাকে সফল করে তুলবে।\n\n#AITools #Automation #Productivity #NewGoLearn"
+    return fallback_caption, "futuristic artificial intelligence workspace technology", "A modern futuristic workspace with glowing artificial intelligence holographic screens, high-tech aesthetic, 8k"

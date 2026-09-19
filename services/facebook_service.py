@@ -1,3 +1,4 @@
+import json
 import logging
 from typing import Any, Dict
 import requests
@@ -57,9 +58,11 @@ def send_messenger_reply(recipient_id: str, message_text: str) -> Dict[str, Any]
         return {"success": False, "error": str(e)}
 
 
-def publish_post_to_page(message: str, image_url: str = "") -> Dict[str, Any]:
+def publish_post_to_page(message: str, image_url: str = "", as_draft: bool = True) -> Dict[str, Any]:
     """
-    Publishes a post (photo with caption, or plain text) to the Facebook Page feed.
+    Creates a post on the Facebook Page.
+    When as_draft=True (default), the post is saved as an unpublished DRAFT in Meta Business Suite,
+    so the user can review and approve/publish it manually.
     """
     if not config.FB_PAGE_ACCESS_TOKEN or not config.FB_PAGE_ID:
         err = "FB_PAGE_ACCESS_TOKEN or FB_PAGE_ID is not configured."
@@ -68,38 +71,61 @@ def publish_post_to_page(message: str, image_url: str = "") -> Dict[str, Any]:
 
     params = {"access_token": config.FB_PAGE_ACCESS_TOKEN}
 
-    # Case 1: Photo Post
+    # Case 1: Photo Draft or Post
     if image_url:
-        url = f"{GRAPH_API_URL}/{config.FB_PAGE_ID}/photos"
-        payload = {
-            "url": image_url,
-            "caption": message,
-            "published": True,
-        }
         try:
-            logger.info(f"Attempting to publish photo post with image: {image_url}")
-            response = requests.post(url, data=payload, params=params, timeout=20)
-            res_data = response.json()
-            if response.status_code == 200:
-                logger.info(f"Successfully published photo post! ID: {res_data.get('id')}")
-                return {"success": True, "type": "photo", "data": res_data}
+            if as_draft:
+                logger.info(f"Creating unpublished temporary photo from: {image_url}")
+                photo_url = f"{GRAPH_API_URL}/{config.FB_PAGE_ID}/photos"
+                photo_res = requests.post(
+                    photo_url,
+                    data={"url": image_url, "published": False, "temporary": True},
+                    params=params,
+                    timeout=20,
+                )
+                photo_data = photo_res.json()
+                if photo_res.status_code == 200 and "id" in photo_data:
+                    photo_id = photo_data["id"]
+                    # Attach photo to draft feed post
+                    feed_url = f"{GRAPH_API_URL}/{config.FB_PAGE_ID}/feed"
+                    feed_payload = {
+                        "message": message,
+                        "published": False,
+                        "attached_media": json.dumps([{"media_fbid": photo_id}]),
+                    }
+                    feed_res = requests.post(feed_url, data=feed_payload, params=params, timeout=15)
+                    feed_data = feed_res.json()
+                    if feed_res.status_code == 200:
+                        logger.info(f"Successfully created DRAFT photo post on Facebook! ID: {feed_data.get('id')}")
+                        return {"success": True, "type": "draft_photo", "data": feed_data}
             else:
-                logger.warning(f"Photo post failed ({res_data}), falling back to text post...")
+                # Direct live publish (only if explicitly requested)
+                url = f"{GRAPH_API_URL}/{config.FB_PAGE_ID}/photos"
+                payload = {"url": image_url, "caption": message, "published": True}
+                response = requests.post(url, data=payload, params=params, timeout=20)
+                res_data = response.json()
+                if response.status_code == 200:
+                    logger.info(f"Successfully published live photo post! ID: {res_data.get('id')}")
+                    return {"success": True, "type": "photo", "data": res_data}
         except Exception as e:
-            logger.error(f"Error publishing photo post: {e}, attempting text post fallback...")
+            logger.error(f"Error handling photo post: {e}, falling back to text feed post...")
 
-    # Case 2: Text Post fallback or direct text post
-    url = f"{GRAPH_API_URL}/{config.FB_PAGE_ID}/feed"
-    payload = {"message": message}
+    # Case 2: Text Post (Draft or Live)
+    feed_url = f"{GRAPH_API_URL}/{config.FB_PAGE_ID}/feed"
+    payload = {
+        "message": message,
+        "published": not as_draft,
+    }
     try:
-        response = requests.post(url, data=payload, params=params, timeout=15)
+        response = requests.post(feed_url, data=payload, params=params, timeout=15)
         res_data = response.json()
         if response.status_code == 200:
-            logger.info(f"Successfully published text post! ID: {res_data.get('id')}")
-            return {"success": True, "type": "text", "data": res_data}
+            post_type = "draft_text" if as_draft else "text"
+            logger.info(f"Successfully created {post_type} post! ID: {res_data.get('id')}")
+            return {"success": True, "type": post_type, "data": res_data}
         else:
-            logger.error(f"Failed to publish post: {res_data}")
+            logger.error(f"Failed to create post: {res_data}")
             return {"success": False, "error": res_data}
     except Exception as e:
-        logger.error(f"Exception publishing feed post: {e}")
+        logger.error(f"Exception creating post: {e}")
         return {"success": False, "error": str(e)}
