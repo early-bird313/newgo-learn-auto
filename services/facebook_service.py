@@ -7,6 +7,7 @@ import config
 logger = logging.getLogger(__name__)
 
 GRAPH_API_URL = f"https://graph.facebook.com/{config.FB_GRAPH_API_VERSION}"
+GRAPH_VIDEO_URL = f"https://graph-video.facebook.com/{config.FB_GRAPH_API_VERSION}"
 
 
 def send_typing_indicator(recipient_id: str, action: str = "typing_on") -> bool:
@@ -58,11 +59,47 @@ def send_messenger_reply(recipient_id: str, message_text: str) -> Dict[str, Any]
         return {"success": False, "error": str(e)}
 
 
-def publish_post_to_page(message: str, image_url: str = "", as_draft: bool = True) -> Dict[str, Any]:
+def publish_video_to_page(description: str, video_url: str) -> Dict[str, Any]:
     """
-    Creates a post on the Facebook Page.
-    When as_draft=True (default), the post is saved as an unpublished DRAFT in Meta Business Suite,
-    so the user can review and approve/publish it manually.
+    Publishes a video to the Facebook Page using a direct public video URL.
+    """
+    if not config.FB_PAGE_ACCESS_TOKEN or not config.FB_PAGE_ID:
+        err = "FB_PAGE_ACCESS_TOKEN or FB_PAGE_ID is not configured."
+        logger.error(err)
+        return {"success": False, "error": err}
+
+    url = f"{GRAPH_VIDEO_URL}/{config.FB_PAGE_ID}/videos"
+    params = {"access_token": config.FB_PAGE_ACCESS_TOKEN}
+    data = {
+        "description": description,
+        "file_url": video_url,
+    }
+
+    try:
+        logger.info(f"Publishing video to Facebook from URL: {video_url}")
+        response = requests.post(url, data=data, params=params, timeout=40)
+        res_data = response.json()
+        if response.status_code == 200:
+            logger.info(f"Successfully published video! ID: {res_data.get('id')}")
+            return {"success": True, "type": "video", "data": res_data}
+        else:
+            logger.error(f"Failed to publish video: {res_data}")
+            return {"success": False, "error": res_data}
+    except Exception as e:
+        logger.error(f"Exception publishing video: {e}")
+        return {"success": False, "error": str(e)}
+
+
+def publish_post_to_page(
+    message: str,
+    image_url: str = "",
+    video_url: str = "",
+    media_type: str = "photo",
+    as_draft: bool = False,
+) -> Dict[str, Any]:
+    """
+    Creates or publishes a post (Text, Photo, or Video) to the Facebook Page.
+    When as_draft=False (default upon user approval), it is published live.
     """
     if not config.FB_PAGE_ACCESS_TOKEN or not config.FB_PAGE_ID:
         err = "FB_PAGE_ACCESS_TOKEN or FB_PAGE_ID is not configured."
@@ -70,12 +107,16 @@ def publish_post_to_page(message: str, image_url: str = "", as_draft: bool = Tru
         return {"success": False, "error": err}
 
     params = {"access_token": config.FB_PAGE_ACCESS_TOKEN}
+    normalized_media = media_type.lower().strip()
 
-    # Case 1: Photo Draft or Post
-    if image_url:
+    # Case 1: Video Post
+    if normalized_media == "video" and video_url:
+        return publish_video_to_page(description=message, video_url=video_url)
+
+    # Case 2: Photo Post (Draft or Live)
+    if (normalized_media == "photo" or not normalized_media) and image_url:
         try:
             if as_draft:
-                logger.info(f"Creating unpublished temporary photo from: {image_url}")
                 photo_url = f"{GRAPH_API_URL}/{config.FB_PAGE_ID}/photos"
                 photo_res = requests.post(
                     photo_url,
@@ -86,7 +127,6 @@ def publish_post_to_page(message: str, image_url: str = "", as_draft: bool = Tru
                 photo_data = photo_res.json()
                 if photo_res.status_code == 200 and "id" in photo_data:
                     photo_id = photo_data["id"]
-                    # Attach photo to draft feed post
                     feed_url = f"{GRAPH_API_URL}/{config.FB_PAGE_ID}/feed"
                     feed_payload = {
                         "message": message,
@@ -96,21 +136,22 @@ def publish_post_to_page(message: str, image_url: str = "", as_draft: bool = Tru
                     feed_res = requests.post(feed_url, data=feed_payload, params=params, timeout=15)
                     feed_data = feed_res.json()
                     if feed_res.status_code == 200:
-                        logger.info(f"Successfully created DRAFT photo post on Facebook! ID: {feed_data.get('id')}")
                         return {"success": True, "type": "draft_photo", "data": feed_data}
             else:
-                # Direct live publish (only if explicitly requested)
+                # Direct live photo publish
                 url = f"{GRAPH_API_URL}/{config.FB_PAGE_ID}/photos"
                 payload = {"url": image_url, "caption": message, "published": True}
-                response = requests.post(url, data=payload, params=params, timeout=20)
+                response = requests.post(url, data=payload, params=params, timeout=25)
                 res_data = response.json()
                 if response.status_code == 200:
                     logger.info(f"Successfully published live photo post! ID: {res_data.get('id')}")
                     return {"success": True, "type": "photo", "data": res_data}
+                else:
+                    logger.warning(f"Photo post failed ({res_data}), falling back to text...")
         except Exception as e:
             logger.error(f"Error handling photo post: {e}, falling back to text feed post...")
 
-    # Case 2: Text Post (Draft or Live)
+    # Case 3: Text-only Post (or fallback)
     feed_url = f"{GRAPH_API_URL}/{config.FB_PAGE_ID}/feed"
     payload = {
         "message": message,
@@ -124,7 +165,7 @@ def publish_post_to_page(message: str, image_url: str = "", as_draft: bool = Tru
             logger.info(f"Successfully created {post_type} post! ID: {res_data.get('id')}")
             return {"success": True, "type": post_type, "data": res_data}
         else:
-            logger.error(f"Failed to create post: {res_data}")
+            logger.error(f"Failed to create text post: {res_data}")
             return {"success": False, "error": res_data}
     except Exception as e:
         logger.error(f"Exception creating post: {e}")

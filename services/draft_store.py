@@ -1,14 +1,26 @@
+from datetime import datetime
 import json
 import logging
 from pathlib import Path
 import time
 import uuid
 from typing import Any, Dict, List, Optional
+from zoneinfo import ZoneInfo
 import config
 
 logger = logging.getLogger(__name__)
 
 DRAFTS_FILE = config.BASE_DIR / "drafts.json"
+
+
+def get_current_bst_time_str() -> str:
+    """Returns the current formatted time in Bangladesh Timezone (Asia/Dhaka)."""
+    try:
+        tz = ZoneInfo(config.APP_TIMEZONE)
+        return datetime.now(tz).strftime("%Y-%m-%d %I:%M %p (BST)")
+    except Exception as e:
+        logger.warning(f"Error computing timezone {config.APP_TIMEZONE}: {e}")
+        return time.strftime("%Y-%m-%d %I:%M %p")
 
 
 def _load_drafts() -> List[Dict[str, Any]]:
@@ -41,7 +53,7 @@ def get_pending_drafts() -> List[Dict[str, Any]]:
     return [d for d in get_all_drafts() if d.get("status") == "pending"]
 
 
-def get_published_drafts(limit: int = 5) -> List[Dict[str, Any]]:
+def get_published_drafts(limit: int = 10) -> List[Dict[str, Any]]:
     """Returns recently published drafts."""
     published = [d for d in get_all_drafts() if d.get("status") == "published"]
     return published[:limit]
@@ -55,34 +67,52 @@ def get_draft_by_id(draft_id: str) -> Optional[Dict[str, Any]]:
     return None
 
 
-def add_draft(caption: str, image_url: str, topic: str = "", keyword: str = "") -> Dict[str, Any]:
-    """Adds a newly generated post to the pending drafts queue."""
+def add_draft(
+    caption: str,
+    image_url: str = "",
+    topic: str = "",
+    keyword: str = "",
+    media_type: str = "photo",
+    video_url: str = "",
+) -> Dict[str, Any]:
+    """
+    Adds a newly generated post to the pending drafts queue.
+    media_type can be 'photo', 'video', or 'text'.
+    """
     drafts = _load_drafts()
+    
+    # Normalize media type
+    m_type = media_type.lower().strip()
+    if m_type not in ["photo", "video", "text"]:
+        m_type = "photo" if (image_url or not video_url) else "video"
+
     new_draft = {
         "id": str(uuid.uuid4())[:8],
         "caption": caption,
         "image_url": image_url,
+        "video_url": video_url,
+        "media_type": m_type,
         "topic": topic or config.DEFAULT_POST_TOPIC,
         "keyword": keyword,
         "created_at": time.time(),
-        "created_time_str": time.strftime("%Y-%m-%d %I:%M %p"),
+        "created_time_str": get_current_bst_time_str(),
         "status": "pending",
         "fb_post_id": None,
     }
     drafts.insert(0, new_draft)
     _save_drafts(drafts)
-    logger.info(f"Created new pending draft with ID: {new_draft['id']}")
+    logger.info(f"Created new pending draft with ID: {new_draft['id']} (Media: {m_type})")
     return new_draft
 
 
 def mark_draft_as_published(draft_id: str, fb_post_id: str = "") -> bool:
-    """Updates draft status to published with Facebook post ID."""
+    """Updates draft status to published with Facebook post ID and exact BST time."""
     drafts = _load_drafts()
     for d in drafts:
         if d.get("id") == draft_id:
             d["status"] = "published"
             d["published_at"] = time.time()
-            d["published_time_str"] = time.strftime("%Y-%m-%d %I:%M %p"),
+            d["published_time_str"] = get_current_bst_time_str()
             d["fb_post_id"] = fb_post_id
             _save_drafts(drafts)
             logger.info(f"Marked draft {draft_id} as published (FB ID: {fb_post_id})")
