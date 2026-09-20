@@ -44,3 +44,7 @@ PORT = int(os.getenv("PORT", "8000"))
 
 # Path to Knowledge Base File
 KNOWLEDGE_BASE_FILE = BASE_DIR / "knowledge_base.txt"
+
+# Uploads directory for user-uploaded images and videos
+UPLOADS_DIR = BASE_DIR / "uploads"
+UPLOADS_DIR.mkdir(parents=True, exist_ok=True)

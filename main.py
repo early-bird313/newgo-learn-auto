@@ -3,12 +3,17 @@ from collections import deque
 from contextlib import asynccontextmanager
 import html
 import logging
+import os
+from pathlib import Path
+import shutil
 from typing import Optional
+import uuid
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-from fastapi import BackgroundTasks, FastAPI, Form, HTTPException, Query, Request, Response
+from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Query, Request, Response, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
 import config
 from services.draft_store import (
@@ -115,22 +120,26 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="NewGo Learn Auto - Facebook AI Approval Dashboard",
-    description="One-Click Post Approval Dashboard, Media Support (Text/Photo/Video), Google Sheets Sync, and AI Messenger Bot.",
-    version="2.5.0",
+    description="One-Click Post Approval Dashboard, Direct Device Uploads, Google Sheets Sync, and AI Messenger Bot.",
+    version="3.0.0",
     lifespan=lifespan,
 )
+
+# Mount local uploads directory for user-uploaded images and videos
+app.mount("/uploads", StaticFiles(directory=config.UPLOADS_DIR), name="uploads")
 
 
 @app.get("/", response_class=HTMLResponse)
 async def home(msg: Optional[str] = None, error: Optional[str] = None):
-    """Modern, full-featured Post Approval Dashboard."""
+    """Modern, intuitive Post Approval Dashboard with Direct Media Uploads."""
     pending_drafts = get_pending_drafts()
     published_drafts = get_published_drafts(limit=10)
     current_time = get_current_bst_time_str()
+    drafts_count = len(pending_drafts)
 
     alert_html = ""
     if msg == "draft_created":
-        alert_html = '<div class="alert alert-success">✨ নতুন পোস্টের ড্রাফট তৈরি হয়েছে! নিচে দেখে অনুমোদন দিন।</div>'
+        alert_html = f'<div class="alert alert-success">✨ নতুন ড্রাফট যোগ হয়েছে! বর্তমানে মোট {drafts_count}টি ড্রাফট সংরক্ষিত আছে।</div>'
     elif msg == "published":
         alert_html = '<div class="alert alert-success">🎉 পোস্টটি সফলভাবে আপনার ফেসবুক পেজে লাইভ হয়েছে!</div>'
     elif msg == "deleted":
@@ -145,34 +154,36 @@ async def home(msg: Optional[str] = None, error: Optional[str] = None):
     if not pending_drafts:
         pending_cards_html = """
         <div class="empty-state">
-            <p style="font-size: 1.1rem; color: #cbd5e1; margin-bottom: 0.4rem;">বর্তমানে অনুমোদনের অপেক্ষায় কোনো পোস্ট নেই।</p>
-            <p style="color: #94a3b8; font-size: 0.9rem; margin: 0;">নিচের অপশনগুলো দিয়ে নতুন ড্রাফট তৈরি করুন অথবা প্রতিদিন সকাল ৯টা ও সন্ধ্যা ৬টায় এআই স্বয়ংক্রিয়ভাবে নতুন ড্রাফট বানিয়ে রাখবে।</p>
+            <p style="font-size: 1.15rem; color: #cbd5e1; margin-bottom: 0.4rem;">বর্তমানে কোনো ড্রাফট নেই (০টি ড্রাফট)।</p>
+            <p style="color: #94a3b8; font-size: 0.95rem; margin: 0;">নিচে <strong>"➕ নতুন ড্রাফট তৈরি করুন"</strong> বাটনে ক্লিক করে এক এক করে ড্রাফট যোগ করতে পারেন অথবা ডিভাইস থেকে ছবি/ভিডিও আপলোড করতে পারেন।</p>
         </div>
         """
     else:
-        for d in pending_drafts:
+        for idx, d in enumerate(pending_drafts, 1):
             safe_caption = html.escape(d.get("caption", ""))
             safe_img = html.escape(d.get("image_url", ""))
             safe_video = html.escape(d.get("video_url", ""))
+            safe_local_file = html.escape(d.get("local_file_path", ""))
             safe_topic = html.escape(d.get("topic", ""))
             media_type = d.get("media_type", "photo").lower()
             draft_id = d["id"]
             created_at = d.get("created_time_str", "Today")
 
-            # Media preview element
+            # Determine media preview element
             media_preview = ""
             media_badge = ""
-            if media_type == "video" and safe_video:
+            if media_type == "video" and (safe_video or safe_local_file):
+                video_src = safe_video if safe_video else f"/uploads/{os.path.basename(safe_local_file)}"
                 media_badge = '<span class="badge-media badge-video">🎥 Video Post</span>'
                 media_preview = f"""
                 <div class="video-container">
-                    <video src="{safe_video}" controls class="post-media" preload="metadata">আপনার ব্রাউজারে ভিডিও সাপোর্ট করছে না</video>
+                    <video src="{video_src}" controls class="post-media" preload="metadata">ভিডিও লোড হচ্ছে...</video>
                 </div>
-                <div class="media-url-snippet">URL: <a href="{safe_video}" target="_blank" style="color: #38bdf8;">{safe_video[:35]}...</a></div>
                 """
-            elif media_type == "photo" and safe_img:
+            elif media_type == "photo" and (safe_img or safe_local_file):
+                img_src = safe_img if safe_img else f"/uploads/{os.path.basename(safe_local_file)}"
                 media_badge = '<span class="badge-media badge-photo">📷 Photo Post</span>'
-                media_preview = f'<img src="{safe_img}" alt="Generated Image" class="post-media" loading="lazy" />'
+                media_preview = f'<img src="{img_src}" alt="Post Image" class="post-media" onerror="this.onerror=null; this.src=\'https://picsum.photos/800/450\';" />'
             else:
                 media_badge = '<span class="badge-media badge-text">📝 Text-Only Post</span>'
                 media_preview = """
@@ -182,11 +193,11 @@ async def home(msg: Optional[str] = None, error: Optional[str] = None):
                 """
 
             pending_cards_html += f"""
-            <div class="card post-card">
+            <div class="card post-card" id="draft_{draft_id}">
                 <div class="post-header">
-                    <div>
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <span class="draft-num-badge">ড্রাফট #{idx}</span>
                         {media_badge}
-                        <span class="badge-pending">⏳ অনুমোদনের অপেক্ষায়</span>
                     </div>
                     <span class="post-time">🕒 {created_at}</span>
                 </div>
@@ -197,18 +208,12 @@ async def home(msg: Optional[str] = None, error: Optional[str] = None):
                     </div>
                     <div class="caption-col">
                         <form action="/drafts/{draft_id}/approve" method="post">
-                            <label class="form-label">পোস্টের ক্যাপশন (প্রয়োজনে এডিট করুন):</label>
+                            <label class="form-label">পোস্টের ক্যাপশন (প্রয়োজনে পরিবর্তন করুন):</label>
                             <textarea name="caption" class="caption-textarea" rows="8">{safe_caption}</textarea>
                             
-                            <div class="media-inputs">
-                                <label class="form-label" style="margin-top: 0.5rem;">মিডিয়া লিংক পরিবর্তন করুন (ঐচ্ছিক):</label>
-                                <input type="text" name="media_url" value="{safe_video if media_type == 'video' else safe_img}" class="input-text" placeholder="ছবির বা ভিডিওর সরাসরি লিঙ্ক (http...)" />
-                                <div style="display: flex; gap: 1rem; margin-top: 0.5rem;">
-                                    <label><input type="radio" name="media_type" value="photo" {'checked' if media_type == 'photo' else ''}> ছবি (Photo)</label>
-                                    <label><input type="radio" name="media_type" value="video" {'checked' if media_type == 'video' else ''}> ভিডিও (Video)</label>
-                                    <label><input type="radio" name="media_type" value="text" {'checked' if media_type == 'text' else ''}> শুধু টেক্সট</label>
-                                </div>
-                            </div>
+                            <input type="hidden" name="media_type" value="{media_type}">
+                            <input type="hidden" name="media_url" value="{safe_video if media_type == 'video' else safe_img}">
+                            <input type="hidden" name="local_file_path" value="{safe_local_file}">
 
                             <div class="card-actions">
                                 <button type="submit" class="btn btn-approve">🚀 ফেসবুকে পোস্ট করুন (Approve & Post)</button>
@@ -242,7 +247,7 @@ async def home(msg: Optional[str] = None, error: Optional[str] = None):
             </div>
             """
     else:
-        published_list_html = "<p style='color: #94a3b8; font-size: 0.9rem;'>এখনো কোনো পোস্ট অ্যাপ্রুভ করে পাবলিশ করা হয়নি।</p>"
+        published_list_html = "<p style='color: #94a3b8; font-size: 0.9rem;'>এখনো কোনো পোস্ট পাবলিশ করা হয়নি।</p>"
 
     html_content = f"""
     <!DOCTYPE html>
@@ -253,7 +258,7 @@ async def home(msg: Optional[str] = None, error: Optional[str] = None):
         <title>NewGo Learn Auto - Post Approval Dashboard</title>
         <style>
             :root {{
-                --bg: #0f172a;
+                --bg: #0b1120;
                 --card-bg: #1e293b;
                 --border: #334155;
                 --text: #f8fafc;
@@ -264,7 +269,7 @@ async def home(msg: Optional[str] = None, error: Optional[str] = None):
                 --danger: #ef4444;
             }}
             body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: var(--bg); color: var(--text); padding: 1.2rem; margin: 0; }}
-            .container {{ max-width: 1000px; margin: 0 auto; }}
+            .container {{ max-width: 1050px; margin: 0 auto; }}
             header {{ display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem; }}
             h1 {{ margin: 0; color: #38bdf8; font-size: 1.6rem; }}
             .header-badges {{ display: flex; gap: 0.5rem; flex-wrap: wrap; }}
@@ -276,53 +281,56 @@ async def home(msg: Optional[str] = None, error: Optional[str] = None):
             .alert-info {{ background: #1e3a8a; color: #bfdbfe; border: 1px solid #3b82f6; }}
             .alert-error {{ background: #7f1d1d; color: #fecaca; border: 1px solid #dc2626; }}
 
-            .section-title {{ color: #e2e8f0; font-size: 1.2rem; margin: 1.8rem 0 0.8rem; display: flex; align-items: center; justify-content: space-between; }}
-            .card {{ background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 1.25rem; margin-bottom: 1.5rem; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }}
+            .section-title {{ color: #e2e8f0; font-size: 1.25rem; margin: 2rem 0 1rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.8rem; }}
+            .card {{ background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 1.35rem; margin-bottom: 1.5rem; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }}
             
-            /* Tabs / Grid for Creation Options */
-            .creation-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 1.2rem; margin-bottom: 1.5rem; }}
-            @media (max-width: 768px) {{ .creation-grid {{ grid-template-columns: 1fr; }} }}
-
-            .input-text {{ width: 100%; box-sizing: border-box; background: #0f172a; border: 1px solid var(--border); color: #fff; padding: 0.65rem 0.85rem; border-radius: 6px; font-size: 0.9rem; }}
+            .input-text {{ width: 100%; box-sizing: border-box; background: #0f172a; border: 1px solid var(--border); color: #fff; padding: 0.75rem 1rem; border-radius: 8px; font-size: 0.95rem; }}
             .input-text:focus {{ outline: none; border-color: #38bdf8; }}
-            .select-box {{ background: #0f172a; border: 1px solid var(--border); color: #fff; padding: 0.65rem 0.85rem; border-radius: 6px; font-size: 0.9rem; }}
+            .form-label {{ display: block; color: #cbd5e1; font-weight: 500; font-size: 0.9rem; margin-bottom: 0.4rem; }}
+            .caption-textarea {{ width: 100%; box-sizing: border-box; background: #0f172a; border: 1px solid var(--border); color: #fff; padding: 0.75rem; border-radius: 8px; font-size: 0.95rem; font-family: inherit; line-height: 1.5; resize: vertical; }}
+            .caption-textarea:focus {{ outline: none; border-color: #38bdf8; }}
 
-            /* Post Cards */
-            .post-header {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }}
-            .badge-pending {{ background: #854d0e; color: #fef08a; padding: 0.2rem 0.5rem; border-radius: 10px; font-size: 0.75rem; font-weight: bold; margin-left: 0.4rem; }}
+            /* Device File Upload Box */
+            .upload-dropzone {{ border: 2px dashed #475569; border-radius: 10px; padding: 1.5rem; text-align: center; background: #0f172a; cursor: pointer; transition: border-color 0.2s; position: relative; }}
+            .upload-dropzone:hover {{ border-color: #38bdf8; }}
+            .file-hidden {{ position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }}
+            .live-preview-box {{ margin-top: 1rem; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); max-height: 320px; display: none; text-align: center; background: #020617; }}
+            .live-preview-img {{ max-width: 100%; max-height: 300px; object-fit: contain; border-radius: 6px; }}
+            .live-preview-video {{ max-width: 100%; max-height: 300px; border-radius: 6px; }}
+
+            /* Draft Cards */
+            .draft-num-badge {{ background: #0284c7; color: #fff; padding: 0.2rem 0.6rem; border-radius: 8px; font-size: 0.8rem; font-weight: bold; }}
             .badge-media {{ padding: 0.2rem 0.5rem; border-radius: 10px; font-size: 0.75rem; font-weight: bold; }}
             .badge-photo {{ background: #0369a1; color: #bae6fd; }}
             .badge-video {{ background: #701a75; color: #f5d0fe; }}
             .badge-text {{ background: #334155; color: #e2e8f0; }}
-            .post-time {{ color: #94a3b8; font-size: 0.85rem; font-weight: 500; }}
+            .badge-count-header {{ background: #3b82f6; color: #fff; padding: 0.25rem 0.7rem; border-radius: 20px; font-size: 0.85rem; font-weight: bold; }}
 
+            .post-header {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }}
+            .post-time {{ color: #94a3b8; font-size: 0.85rem; font-weight: 500; }}
             .post-body {{ display: grid; grid-template-columns: 320px 1fr; gap: 1.5rem; }}
             @media (max-width: 768px) {{ .post-body {{ grid-template-columns: 1fr; }} }}
             
             .post-media {{ width: 100%; border-radius: 8px; object-fit: cover; aspect-ratio: 16/9; border: 1px solid var(--border); }}
             .text-only-box {{ display: flex; align-items: center; justify-content: center; background: #0f172a; border: 1px dashed var(--border); border-radius: 8px; aspect-ratio: 16/9; color: #94a3b8; font-size: 0.85rem; text-align: center; padding: 1rem; box-sizing: border-box; }}
-            .media-url-snippet {{ font-size: 0.75rem; color: #94a3b8; margin-top: 0.4rem; word-break: break-all; }}
             .topic-tag {{ display: block; color: #94a3b8; font-size: 0.8rem; margin-top: 0.5rem; word-break: break-word; }}
 
-            .form-label {{ display: block; color: #cbd5e1; font-weight: 500; font-size: 0.85rem; margin-bottom: 0.4rem; }}
-            .caption-textarea {{ width: 100%; box-sizing: border-box; background: #0f172a; border: 1px solid var(--border); color: #fff; padding: 0.75rem; border-radius: 8px; font-size: 0.95rem; font-family: inherit; line-height: 1.5; resize: vertical; }}
-            .caption-textarea:focus {{ outline: none; border-color: #38bdf8; }}
-            
             .card-actions {{ margin-top: 1rem; display: flex; gap: 0.8rem; }}
-            .btn {{ padding: 0.65rem 1.1rem; border-radius: 6px; font-weight: bold; font-size: 0.9rem; border: none; cursor: pointer; transition: all 0.2s; }}
+            .btn {{ padding: 0.75rem 1.3rem; border-radius: 8px; font-weight: bold; font-size: 0.95rem; border: none; cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem; }}
             .btn-primary {{ background: var(--primary); color: #fff; }}
             .btn-primary:hover {{ background: var(--primary-hover); }}
             .btn-approve {{ background: var(--success); color: #fff; flex: 1; }}
             .btn-approve:hover {{ background: var(--success-hover); }}
-            .btn-delete {{ background: transparent; color: #f87171; border: 1px solid #ef4444; font-size: 0.8rem; padding: 0.35rem 0.7rem; border-radius: 6px; cursor: pointer; }}
+            .btn-delete {{ background: transparent; color: #f87171; border: 1px solid #ef4444; font-size: 0.85rem; padding: 0.4rem 0.8rem; border-radius: 6px; cursor: pointer; }}
             .btn-delete:hover {{ background: rgba(239,68,68,0.1); }}
+            .btn-add-draft {{ background: #0284c7; color: white; padding: 0.5rem 1rem; font-size: 0.9rem; }}
 
             .empty-state {{ text-align: center; padding: 2.5rem 1rem; background: var(--card-bg); border-radius: 12px; border: 1px dashed var(--border); }}
             .pub-item {{ display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 0; border-bottom: 1px solid var(--border); }}
             .pub-item:last-child {{ border-bottom: none; }}
             .badge-pub {{ background: #064e3b; color: #34d399; font-size: 0.75rem; padding: 0.2rem 0.6rem; border-radius: 10px; font-weight: bold; }}
             
-            .helper-text {{ font-size: 0.8rem; color: #94a3b8; margin-top: 0.3rem; }}
+            .helper-text {{ font-size: 0.85rem; color: #94a3b8; margin-top: 0.3rem; }}
         </style>
     </head>
     <body>
@@ -330,77 +338,93 @@ async def home(msg: Optional[str] = None, error: Optional[str] = None):
             <header>
                 <div>
                     <h1>🚀 NewGo Learn Auto</h1>
-                    <span style="color: #94a3b8; font-size: 0.9rem;">পোস্ট অনুমোদন ও কন্টেন্ট ম্যানেজমেন্ট ড্যাশবোর্ড</span>
+                    <span style="color: #94a3b8; font-size: 0.9rem;">পোস্ট অনুমোদন ও ডিভাইস আপলোড ড্যাশবোর্ড</span>
                 </div>
                 <div class="header-badges">
                     <span class="badge-tz">🕒 {current_time}</span>
-                    <span class="badge-safe">🛡️ অনুমোদনের পর পোস্ট লাইভ হবে</span>
+                    <span class="badge-safe">🛡️ অনুমোদনের পরই পোস্ট লাইভ হবে</span>
                 </div>
             </header>
 
             {alert_html}
 
-            <!-- Creation Grid: AI Multi-Draft + Google Sheets Sync -->
-            <div class="creation-grid">
-                <!-- Box 1: AI Multi-Draft Generator -->
-                <div class="card" style="margin-bottom: 0;">
-                    <h3 style="margin-top: 0; color: #38bdf8; font-size: 1.1rem;">✨ এআই দিয়ে একাধিক ড্রাফট তৈরি (Multi-Draft)</h3>
-                    <p class="helper-text">এআই দিয়ে এক ক্লিকে ১টি, ৩টি বা ৫টি পোস্টের ড্রাফট তৈরি করে রাখুন:</p>
-                    <form action="/drafts/generate" method="post" style="display: flex; flex-direction: column; gap: 0.7rem;">
-                        <input type="text" name="topic" class="input-text" placeholder="টপিক (যেমন: Top 5 AI Tools) অথবা খালি রাখুন..." />
-                        <div style="display: flex; gap: 0.6rem; align-items: center;">
-                            <label class="form-label" style="margin: 0; white-space: nowrap;">কয়টি ড্রাফট?</label>
-                            <select name="count" class="select-box">
-                                <option value="1">১টি ড্রাফট</option>
-                                <option value="3" selected>৩টি ড্রাফট (Recommended)</option>
-                                <option value="5">৫টি ড্রাফট</option>
-                            </select>
-                            <button type="submit" class="btn btn-primary" style="flex: 1;">⚡ তৈরি করুন</button>
-                        </div>
-                    </form>
+            <!-- Action 1: Add AI Draft One by One -->
+            <div class="card" style="border-left: 4px solid #38bdf8;">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.6rem;">
+                    <h3 style="margin: 0; color: #38bdf8; font-size: 1.15rem;">✨ এআই দিয়ে নতুন ড্রাফট যোগ করুন</h3>
+                    <span style="font-size: 0.85rem; color: #94a3b8;">প্রতি ক্লিকে একটি করে নতুন ড্রাফট কিউ-তে যুক্ত হবে</span>
                 </div>
-
-                <!-- Box 2: Google Sheets Sync -->
-                <div class="card" style="margin-bottom: 0;">
-                    <h3 style="margin-top: 0; color: #34d399; font-size: 1.1rem;">📊 গুগল শিট থেকে কন্টেন্ট ইমপোর্ট (Google Sheet)</h3>
-                    <p class="helper-text">আপনার গুগল শিটের শেয়ারেবল লিংক দিন (কলাম: Topic, Caption, Media_Type, Media_URL):</p>
-                    <form action="/drafts/import-sheet" method="post" style="display: flex; flex-direction: column; gap: 0.7rem;">
-                        <input type="text" name="sheet_url" class="input-text" value="{html.escape(config.GOOGLE_SHEET_CSV_URL)}" placeholder="গুগল শিট লিংক পেস্ট করুন..." required />
-                        <button type="submit" class="btn btn-primary" style="background: #059669;">📥 শিট থেকে ড্রাফট ইমপোর্ট করুন</button>
-                    </form>
-                </div>
+                <form action="/drafts/generate" method="post" style="display: flex; gap: 0.8rem; flex-wrap: wrap;">
+                    <input type="text" name="topic" class="input-text" style="flex: 1; min-width: 280px;" placeholder="টপিক বা আইডিয়া লিখুন (যেমন: ChatGPT Tips) অথবা ডিফল্ট রাখতে খালি রাখুন..." />
+                    <button type="submit" class="btn btn-primary" style="background: #0284c7;">➕ নতুন ড্রাফট যোগ করুন (+ Add Draft)</button>
+                </form>
             </div>
 
-            <!-- Box 3: Custom Post Creator (Photo / Video / Text) -->
-            <div class="card">
-                <h3 style="margin-top: 0; color: #e2e8f0; font-size: 1.1rem;">✍️ নিজে কাস্টম পোস্ট তৈরি করুন (Text / Photo / Video)</h3>
-                <form action="/drafts/create-custom" method="post" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-                    <div style="grid-column: 1 / -1;">
+            <!-- Action 2: Direct Device File Upload (Image or Video) -->
+            <div class="card" style="border-left: 4px solid #10b981;">
+                <h3 style="margin-top: 0; color: #34d399; font-size: 1.15rem;">📁 ডিভাইস থেকে সরাসরি ছবি বা ভিডিও আপলোড করে পোস্ট</h3>
+                <p class="helper-text">আপনার ফোন বা কম্পিউটার থেকে ছবি/ভিডিও সিলেক্ট করুন। সাথে সাথে নিচে প্রিভিউ দেখতে পাবেন:</p>
+                
+                <form action="/drafts/create-custom" method="post" enctype="multipart/form-data">
+                    <div style="margin-bottom: 1rem;">
                         <label class="form-label">পোস্টের ক্যাপশন ও হ্যাশট্যাগ:</label>
-                        <textarea name="caption" class="caption-textarea" rows="4" placeholder="আপনার পোস্টের বিস্তারিত বার্তা লিখুন..." required></textarea>
+                        <textarea name="caption" class="caption-textarea" rows="4" placeholder="আপনার পোস্টের বিস্তারিত বার্তা ও হ্যাশট্যাগ লিখুন..." required></textarea>
                     </div>
-                    <div>
-                        <label class="form-label">মিডিয়ার ধরন (Media Type):</label>
-                        <select name="media_type" class="select-box" style="width: 100%;">
-                            <option value="photo">📷 ছবি (Photo Post)</option>
-                            <option value="video">🎥 ভিডিও (Video Post)</option>
-                            <option value="text">📝 শুধুমাত্র টেক্সট (Text Only)</option>
-                        </select>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+                        <div>
+                            <label class="form-label">মিডিয়ার ধরন (Media Type):</label>
+                            <select name="media_type" id="media_type_select" class="input-text" onchange="handleMediaTypeChange()">
+                                <option value="photo">📷 ছবি (Photo Upload)</option>
+                                <option value="video">🎥 ভিডিও (Video Upload)</option>
+                                <option value="text">📝 শুধুমাত্র টেক্সট (No Media)</option>
+                            </select>
+                        </div>
+                        <div id="file_picker_wrapper">
+                            <label class="form-label">ডিভাইস থেকে ফাইল নির্বাচন করুন:</label>
+                            <div class="upload-dropzone">
+                                <span id="dropzone_label">📁 ফাইল সিলেক্ট করতে এখানে ক্লিক করুন (Image / Video)</span>
+                                <input type="file" name="media_file" id="media_file_input" class="file-hidden" accept="image/*,video/*" onchange="previewSelectedMedia(event)" />
+                            </div>
+                        </div>
                     </div>
-                    <div>
-                        <label class="form-label">ছবি বা ভিডিও লিংক (ঐচ্ছিক):</label>
-                        <input type="text" name="media_url" class="input-text" placeholder="সরাসরি ছবির বা ভিডিওর URL..." />
+
+                    <!-- Instant Live Media Preview Container -->
+                    <div id="live_preview_container" class="live-preview-box">
+                        <div style="padding: 0.5rem; background: #0f172a; font-size: 0.85rem; color: #38bdf8; display: flex; justify-content: space-between; align-items: center;">
+                            <span id="preview_filename">সিলেক্টেড ফাইল প্রিভিউ:</span>
+                            <button type="button" onclick="clearSelectedMedia()" style="background: transparent; border: none; color: #f87171; cursor: pointer; font-size: 0.8rem;">✖ ফাইল সরান</button>
+                        </div>
+                        <div id="preview_body" style="padding: 1rem;"></div>
                     </div>
-                    <div style="grid-column: 1 / -1;">
-                        <button type="submit" class="btn btn-primary" style="background: #475569;">➕ ড্রাফটে যুক্ত করুন</button>
+
+                    <div style="margin-top: 1rem;">
+                        <button type="submit" class="btn btn-primary" style="background: #059669; width: 100%;">➕ ড্রাফটে সেভ করুন (Save to Drafts)</button>
                     </div>
                 </form>
             </div>
 
+            <!-- Action 3: Google Sheets Sync (Collapsible) -->
+            <details class="card" style="cursor: pointer;">
+                <summary style="font-weight: bold; color: #cbd5e1; font-size: 1rem;">📊 গুগল শিট থেকে স্বয়ংক্রিয় কন্টেন্ট ইমপোর্ট (ক্লিক করে খুলুন)</summary>
+                <div style="margin-top: 1rem;">
+                    <p class="helper-text">আপনার গুগল শিটের শেয়ারেবল লিংক দিন (কলাম: Topic, Caption, Media_Type, Media_URL):</p>
+                    <form action="/drafts/import-sheet" method="post" style="display: flex; gap: 0.8rem; flex-wrap: wrap;">
+                        <input type="text" name="sheet_url" class="input-text" style="flex: 1; min-width: 280px;" value="{html.escape(config.GOOGLE_SHEET_CSV_URL)}" placeholder="গুগল শিট লিংক পেস্ট করুন..." required />
+                        <button type="submit" class="btn btn-primary" style="background: #0f766e;">📥 শিট থেকে ড্রাফট আনুন</button>
+                    </form>
+                </div>
+            </details>
+
             <!-- Pending Approval Section -->
             <div class="section-title">
-                <span>⏳ অনুমোদনের অপেক্ষায় খসড়া পোস্টসমূহ ({len(pending_drafts)})</span>
-                <span style="font-size: 0.85rem; color: #94a3b8;">দৈনিক শিডিউল: সকাল ৯:০০ ও সন্ধ্যা ৬:০০ (BST)</span>
+                <div style="display: flex; align-items: center; gap: 0.6rem;">
+                    <span>⏳ অনুমোদনের অপেক্ষায় খসড়া পোস্টসমূহ</span>
+                    <span class="badge-count-header">{drafts_count}টি ড্রাফট রেডি</span>
+                </div>
+                <form action="/drafts/generate" method="post" style="display: inline;">
+                    <button type="submit" class="btn btn-add-draft">➕ আরও একটি ড্রাফট যোগ করুন (+)</button>
+                </form>
             </div>
             
             {pending_cards_html}
@@ -413,6 +437,56 @@ async def home(msg: Optional[str] = None, error: Optional[str] = None):
                 {published_list_html}
             </div>
         </div>
+
+        <script>
+            function handleMediaTypeChange() {{
+                const type = document.getElementById('media_type_select').value;
+                const picker = document.getElementById('file_picker_wrapper');
+                const fileInput = document.getElementById('media_file_input');
+                if (type === 'text') {{
+                    picker.style.display = 'none';
+                    clearSelectedMedia();
+                }} else {{
+                    picker.style.display = 'block';
+                    if (type === 'video') {{
+                        fileInput.accept = 'video/*';
+                        document.getElementById('dropzone_label').innerText = '🎥 ডিভাইস থেকে ভিডিও ফাইল সিলেক্ট করুন';
+                    }} else {{
+                        fileInput.accept = 'image/*';
+                        document.getElementById('dropzone_label').innerText = '📷 ডিভাইস থেকে ছবি সিলেক্ট করুন';
+                    }}
+                }}
+            }}
+
+            function previewSelectedMedia(event) {{
+                const file = event.target.files[0];
+                if (!file) return;
+
+                const container = document.getElementById('live_preview_container');
+                const previewBody = document.getElementById('preview_body');
+                const filenameLabel = document.getElementById('preview_filename');
+
+                filenameLabel.innerText = 'সিলেক্টেড: ' + file.name + ' (' + (file.size / (1024*1024)).toFixed(2) + ' MB)';
+                const fileURL = URL.createObjectURL(file);
+
+                if (file.type.startsWith('video/')) {{
+                    document.getElementById('media_type_select').value = 'video';
+                    previewBody.innerHTML = '<video src="' + fileURL + '" controls class="live-preview-video" autoplay muted></video>';
+                }} else {{
+                    document.getElementById('media_type_select').value = 'photo';
+                    previewBody.innerHTML = '<img src="' + fileURL + '" class="live-preview-img" alt="Preview" />';
+                }}
+                container.style.display = 'block';
+            }}
+
+            function clearSelectedMedia() {{
+                const fileInput = document.getElementById('media_file_input');
+                fileInput.value = '';
+                document.getElementById('live_preview_container').style.display = 'none';
+                document.getElementById('preview_body').innerHTML = '';
+                document.getElementById('dropzone_label').innerText = '📁 ফাইল সিলেক্ট করতে এখানে ক্লিক করুন (Image / Video)';
+            }}
+        </script>
     </body>
     </html>
     """
@@ -434,31 +508,77 @@ async def health():
 
 
 # ==============================================================================
-# 1. Draft Actions (Generate Multi-Drafts, Import Sheet, Custom Post, Approve, Delete)
+# 1. Draft Actions (Generate 1 by 1, Import Sheet, Custom Upload, Approve, Delete)
 # ==============================================================================
 @app.post("/drafts/generate")
-async def generate_new_drafts(topic: str = Form(""), count: int = Form(1)):
-    """Generates 1 or multiple AI drafts with captions & images."""
+async def generate_single_draft(topic: str = Form("")):
+    """Generates 1 new draft post and appends it to the draft queue."""
     target_topic = topic.strip() or config.DEFAULT_POST_TOPIC
-    valid_count = max(1, min(count, 5))  # Limit between 1 and 5
-    logger.info(f"Generating {valid_count} drafts for topic: '{target_topic}'")
+    logger.info(f"Adding 1 new draft to queue for topic: '{target_topic}'")
 
     try:
-        for i in range(valid_count):
-            topic_variant = f"{target_topic} (আইডিয়া {i+1})" if valid_count > 1 else target_topic
-            caption, keyword, visual_prompt = generate_page_post(topic_variant)
-            image_url = get_free_image_url(keyword, visual_prompt)
-            add_draft(
-                caption=caption,
-                image_url=image_url,
-                topic=target_topic,
-                keyword=keyword,
-                media_type="photo",
-            )
+        caption, keyword, visual_prompt = generate_page_post(target_topic)
+        image_url = get_free_image_url(keyword, visual_prompt)
+        add_draft(
+            caption=caption,
+            image_url=image_url,
+            topic=target_topic,
+            keyword=keyword,
+            media_type="photo",
+        )
         return RedirectResponse(url="/?msg=draft_created", status_code=303)
     except Exception as e:
-        logger.error(f"Error generating drafts: {e}")
+        logger.error(f"Error generating draft: {e}")
         return RedirectResponse(url=f"/?error={str(e)}", status_code=303)
+
+
+@app.post("/drafts/create-custom")
+async def create_custom_draft(
+    caption: str = Form(...),
+    media_type: str = Form("photo"),
+    media_file: Optional[UploadFile] = File(None),
+):
+    """
+    Directly uploads photo or video from device, or text-only, and saves to drafts queue.
+    """
+    m_type = media_type.lower().strip()
+    saved_local_path = ""
+    saved_web_url = ""
+
+    # Process uploaded media file
+    if media_file and media_file.filename:
+        safe_ext = Path(media_file.filename).suffix.lower()
+        unique_name = f"{str(uuid.uuid4())[:8]}_{media_file.filename.replace(' ', '_')}"
+        target_path = config.UPLOADS_DIR / unique_name
+        
+        try:
+            with open(target_path, "wb") as buffer:
+                shutil.copyfileobj(media_file.file, buffer)
+            saved_local_path = str(target_path)
+            saved_web_url = f"/uploads/{unique_name}"
+            logger.info(f"Saved uploaded file to: {saved_local_path}")
+            
+            # Detect media type from extension if not set
+            if safe_ext in [".mp4", ".mov", ".avi", ".mkv", ".webm"]:
+                m_type = "video"
+            else:
+                m_type = "photo"
+        except Exception as e:
+            logger.error(f"Error saving uploaded file: {e}")
+            return RedirectResponse(url=f"/?error=Failed to upload file: {str(e)}", status_code=303)
+
+    img_url = saved_web_url if m_type == "photo" else ""
+    vid_url = saved_web_url if m_type == "video" else ""
+
+    add_draft(
+        caption=caption.strip(),
+        image_url=img_url,
+        video_url=vid_url,
+        local_file_path=saved_local_path,
+        media_type=m_type,
+        topic="Device Upload Custom Post",
+    )
+    return RedirectResponse(url="/?msg=draft_created", status_code=303)
 
 
 @app.post("/drafts/import-sheet")
@@ -479,43 +599,24 @@ async def import_from_sheet(sheet_url: str = Form("")):
         return RedirectResponse(url=f"/?error={str(e)}", status_code=303)
 
 
-@app.post("/drafts/create-custom")
-async def create_custom_draft(
-    caption: str = Form(...),
-    media_type: str = Form("photo"),
-    media_url: str = Form(""),
-):
-    """Manually creates a custom draft (Text, Photo, or Video)."""
-    m_type = media_type.lower().strip()
-    img_url = media_url.strip() if m_type == "photo" else ""
-    vid_url = media_url.strip() if m_type == "video" else ""
-
-    add_draft(
-        caption=caption.strip(),
-        image_url=img_url,
-        video_url=vid_url,
-        media_type=m_type,
-        topic="Custom Manual Post",
-    )
-    return RedirectResponse(url="/?msg=draft_created", status_code=303)
-
-
 @app.post("/drafts/{draft_id}/approve")
 async def approve_and_publish_draft(
     draft_id: str,
     caption: str = Form(...),
     media_type: str = Form("photo"),
     media_url: str = Form(""),
+    local_file_path: str = Form(""),
 ):
     """
     Human-in-the-Loop Action:
-    User clicked 'Approve & Post'. Publishes Text, Photo, or Video to Facebook Page.
+    User clicked 'Approve & Post'. Publishes Text, Photo, or Video directly to Facebook Page.
     """
     draft = get_draft_by_id(draft_id)
     if not draft:
         raise HTTPException(status_code=404, detail="Draft not found")
 
     m_type = media_type.lower().strip()
+    file_path = local_file_path.strip() or (draft.get("local_file_path") or "")
     img_url = media_url.strip() if m_type == "photo" else (draft.get("image_url") or "")
     vid_url = media_url.strip() if m_type == "video" else (draft.get("video_url") or "")
 
@@ -526,6 +627,7 @@ async def approve_and_publish_draft(
         message=caption.strip(),
         image_url=img_url,
         video_url=vid_url,
+        local_file_path=file_path,
         media_type=m_type,
         as_draft=False,
     )

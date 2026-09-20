@@ -74,10 +74,12 @@ def add_draft(
     keyword: str = "",
     media_type: str = "photo",
     video_url: str = "",
+    local_file_path: str = "",
 ) -> Dict[str, Any]:
     """
     Adds a newly generated post to the pending drafts queue.
     media_type can be 'photo', 'video', or 'text'.
+    Supports local file path for direct device uploads.
     """
     drafts = _load_drafts()
     
@@ -91,6 +93,7 @@ def add_draft(
         "caption": caption,
         "image_url": image_url,
         "video_url": video_url,
+        "local_file_path": local_file_path,
         "media_type": m_type,
         "topic": topic or config.DEFAULT_POST_TOPIC,
         "keyword": keyword,
@@ -101,7 +104,7 @@ def add_draft(
     }
     drafts.insert(0, new_draft)
     _save_drafts(drafts)
-    logger.info(f"Created new pending draft with ID: {new_draft['id']} (Media: {m_type})")
+    logger.info(f"Created new pending draft with ID: {new_draft['id']} (Media: {m_type}, File: {bool(local_file_path)})")
     return new_draft
 
 
