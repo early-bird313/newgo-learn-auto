@@ -2,7 +2,9 @@ import csv
 import io
 import json
 import logging
+from pathlib import Path
 import re
+import shutil
 from typing import Any, Dict, List, Tuple
 import requests
 import config
@@ -97,6 +99,7 @@ def convert_to_csv_url(raw_url: str) -> str:
     """
     Converts any regular Google Sheet link into a direct CSV export download link.
     Handles protocol-less URLs like //docs.google.com/... or docs.google.com/...
+    and Publish-to-Web URLs (/pubhtml).
     """
     url = raw_url.strip()
     if not url:
@@ -107,6 +110,10 @@ def convert_to_csv_url(raw_url: str) -> str:
         url = "https:" + url
     elif not url.startswith("http://") and not url.startswith("https://"):
         url = "https://" + url
+
+    # Handle Publish to Web URLs
+    if "pubhtml" in url:
+        return url.replace("pubhtml", "pub?output=csv")
 
     # If already a CSV / pub URL, return as is
     if "format=csv" in url or "output=csv" in url:
@@ -180,24 +187,8 @@ def fetch_sheet_rows(sheet_url: str) -> Tuple[List[Dict[str, str]], str]:
         return [], err
 
 
-def import_drafts_from_google_sheet(sheet_url: str = "", max_count: int = 5) -> Tuple[int, List[Dict[str, Any]], str]:
-    """
-    Reads rows from the Google Sheet and imports unused/pending topics as drafts.
-    Automatically saves the sheet URL so the 9 AM & 8 PM daily scheduler can use it.
-    Returns: (imported_count, list_of_new_drafts, error_message)
-    """
-    target_url = sheet_url.strip() or get_active_sheet_url()
-    if not target_url:
-        logger.warning("No Google Sheet URL provided.")
-        return 0, [], "কোনো গুগল শিট লিংক দেওয়া হয়নি।"
-
-    rows, error_msg = fetch_sheet_rows(target_url)
-    if error_msg:
-        return 0, [], error_msg
-
-    # Persist the valid URL for future scheduled jobs
-    save_active_sheet_url(target_url)
-
+def _process_rows_into_drafts(rows: List[Dict[str, str]], max_count: int = 5, source_label: str = "Google Sheet") -> Tuple[int, List[Dict[str, Any]], str]:
+    """Helper that turns sheet rows into draft posts."""
     used_keys = get_used_row_keys()
     created_drafts = []
     count = 0
@@ -248,7 +239,7 @@ def import_drafts_from_google_sheet(sheet_url: str = "", max_count: int = 5) -> 
             image_url=image_url_to_use,
             video_url=video_url_to_use,
             media_type=media_type,
-            topic=topic or "Google Sheet Content",
+            topic=topic or f"{source_label} Content",
             keyword=keyword_to_use,
         )
         created_drafts.append(new_draft)
@@ -256,7 +247,68 @@ def import_drafts_from_google_sheet(sheet_url: str = "", max_count: int = 5) -> 
         count += 1
 
     if count == 0:
-        return 0, [], "গুগল শিটের সবগুলো কনটেন্ট ইতিমধ্যে ড্রাফট করা হয়ে গেছে। শিটে নতুন রো যোগ করুন।"
+        return 0, [], "শিটের সবগুলো কনটেন্ট ইতিমধ্যে ড্রাফট করা হয়ে গেছে। শিটে নতুন রো যোগ করুন।"
 
-    logger.info(f"Successfully imported {count} drafts from Google Sheet.")
+    logger.info(f"Successfully imported {count} drafts from {source_label}.")
     return count, created_drafts, ""
+
+
+def import_drafts_from_google_sheet(sheet_url: str = "", max_count: int = 5) -> Tuple[int, List[Dict[str, Any]], str]:
+    """
+    Reads rows from the Google Sheet and imports unused/pending topics as drafts.
+    Automatically saves the sheet URL so the 9 AM & 8 PM daily scheduler can use it.
+    Returns: (imported_count, list_of_new_drafts, error_message)
+    """
+    target_url = sheet_url.strip() or get_active_sheet_url()
+    if not target_url:
+        logger.warning("No Google Sheet URL provided.")
+        return 0, [], "কোনো গুগল শিট লিংক দেওয়া হয়নি।"
+
+    rows, error_msg = fetch_sheet_rows(target_url)
+    if error_msg:
+        return 0, [], error_msg
+
+    # Persist the valid URL for future scheduled jobs
+    save_active_sheet_url(target_url)
+
+    return _process_rows_into_drafts(rows, max_count=max_count, source_label="Google Sheet")
+
+
+def import_drafts_from_csv_file(file_path: Path, max_count: int = 5) -> Tuple[int, List[Dict[str, Any]], str]:
+    """
+    Reads rows from an uploaded local CSV file and imports unused topics as drafts.
+    Persists the file so the daily 9 AM & 8 PM scheduler can read from it offline.
+    """
+    try:
+        if not file_path.exists():
+            return 0, [], "CSV ফাইলটি পাওয়া যায়নি।"
+
+        with open(file_path, "r", encoding="utf-8-sig", errors="ignore") as f:
+            content = f.read()
+
+        if not content.strip():
+            return 0, [], "CSV ফাইলটি সম্পূর্ণ খালি।"
+
+        reader = csv.DictReader(io.StringIO(content))
+        rows = []
+        for raw_row in reader:
+            normalized_row = {}
+            for k, v in raw_row.items():
+                if k:
+                    clean_k = k.strip().lower().replace(" ", "_")
+                    normalized_row[clean_k] = (v or "").strip()
+            if normalized_row and any(normalized_row.values()):
+                rows.append(normalized_row)
+
+        if not rows:
+            return 0, [], "CSV ফাইলে কোনো ডেটা পাওয়া যায়নি। নিশ্চিত করুন প্রথম সারিতে হেডার রয়েছে: Topic, Caption, Media_Type, Media_URL"
+
+        # Save as persistent active sheet file for daily scheduled posts
+        active_csv_dest = config.BASE_DIR / "active_content_sheet.csv"
+        if file_path != active_csv_dest:
+            shutil.copyfile(file_path, active_csv_dest)
+
+        return _process_rows_into_drafts(rows, max_count=max_count, source_label="CSV File")
+    except Exception as e:
+        logger.error(f"Error reading local CSV file: {e}")
+        return 0, [], f"CSV ফাইল পড়তে ত্রুটি: {str(e)}"

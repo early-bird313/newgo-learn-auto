@@ -33,7 +33,11 @@ from services.facebook_service import (
     send_typing_indicator,
 )
 from services.gemini_service import generate_chat_reply, generate_page_post
-from services.google_sheets_service import get_active_sheet_url, import_drafts_from_google_sheet
+from services.google_sheets_service import (
+    get_active_sheet_url,
+    import_drafts_from_csv_file,
+    import_drafts_from_google_sheet,
+)
 from services.image_service import get_free_image_url
 
 # Configure logging
@@ -53,12 +57,22 @@ scheduler = AsyncIOScheduler()
 async def scheduled_daily_post():
     """
     Scheduled task to prepare a draft post (sakal 9:00 AM & rat 8:00 PM BST).
-    Checks Google Sheet first if configured, else uses Gemini AI topic.
+    Checks uploaded CSV first, then Google Sheet, else falls back to Gemini AI topic.
     NOTE: Stored in draft_store for user review and approval before posting to Facebook.
     """
     logger.info("Executing scheduled draft creation (Bangladesh Timezone: 9 AM / 8 PM)...")
     try:
-        # 1. Try importing 1 unused row from Google Sheet if configured
+        # 1. Try importing 1 unused row from local CSV file if uploaded
+        active_csv_path = config.BASE_DIR / "active_content_sheet.csv"
+        if active_csv_path.exists():
+            count, drafts, err_msg = import_drafts_from_csv_file(active_csv_path, max_count=1)
+            if count > 0:
+                logger.info(f"Successfully drafted post from local CSV! Draft ID: {drafts[0]['id']}")
+                return
+            else:
+                logger.warning(f"Local CSV import did not yield a draft: {err_msg}")
+
+        # 2. Try importing 1 unused row from Google Sheet if configured
         active_sheet_url = get_active_sheet_url()
         if active_sheet_url:
             count, drafts, err_msg = import_drafts_from_google_sheet(active_sheet_url, max_count=1)
@@ -68,7 +82,7 @@ async def scheduled_daily_post():
             else:
                 logger.warning(f"Google Sheet import did not yield a draft: {err_msg}. Falling back to Gemini AI...")
 
-        # 2. Otherwise generate via Gemini AI
+        # 3. Otherwise generate via Gemini AI
         caption, keyword, visual_prompt = generate_page_post(config.DEFAULT_POST_TOPIC)
         image_url = get_free_image_url(keyword, visual_prompt)
         draft = add_draft(
@@ -142,6 +156,7 @@ async def home(msg: Optional[str] = None, error: Optional[str] = None):
     current_time = get_current_bst_time_str()
     drafts_count = len(pending_drafts)
     active_sheet_url = get_active_sheet_url()
+    has_active_csv = (config.BASE_DIR / "active_content_sheet.csv").exists()
 
     alert_html = ""
     if msg == "draft_created":
@@ -155,7 +170,7 @@ async def home(msg: Optional[str] = None, error: Optional[str] = None):
     elif msg == "deleted":
         alert_html = '<div class="alert alert-info">🗑️ ড্রাফটটি সফলভাবে মুছে ফেলা হয়েছে।</div>'
     elif msg == "sheet_imported":
-        alert_html = '<div class="alert alert-success">📊 গুগল শিট লিংক সফলভাবে সেভ হয়েছে এবং কনটেন্ট ড্রাফট করা হয়েছে! প্রতিদিন সকাল ৯:০০ টা ও রাত ৮:০০ টায় স্বয়ংক্রিয়ভাবে এখান থেকে পোস্ট ড্রাফট হবে।</div>'
+        alert_html = '<div class="alert alert-success">📊 শিট/CSV ফাইল সফলভাবে সংরক্ষিত হয়েছে এবং কনটেন্ট ড্রাফট করা হয়েছে! প্রতিদিন সকাল ৯:০০ টা ও রাত ৮:০০ টায় স্বয়ংক্রিয়ভাবে এখান থেকে পোস্ট ড্রাফট হবে।</div>'
     elif error:
         alert_html = f'<div class="alert alert-error">❌ এরর: {html.escape(error)}</div>'
 
@@ -472,20 +487,31 @@ async def home(msg: Optional[str] = None, error: Optional[str] = None):
             </div>
 
             <!-- Action 3: Google Sheets Sync (Collapsible) -->
-            <details class="card" style="cursor: pointer;" {"open" if active_sheet_url else ""}>
-                <summary style="font-weight: bold; color: #cbd5e1; font-size: 1rem;">📊 গুগল শিট থেকে কন্টেন্ট অটো-শিডিউল ও ড্রাফট তৈরি</summary>
+            <details class="card" style="cursor: pointer;" {"open" if (active_sheet_url or has_active_csv) else ""}>
+                <summary style="font-weight: bold; color: #cbd5e1; font-size: 1rem;">📊 গুগল শিট বা CSV ফাইল থেকে কন্টেন্ট অটো-শিডিউল ও ড্রাফট তৈরি</summary>
                 <div style="margin-top: 1rem;">
-                    <p class="helper-text" style="color: #cbd5e1; font-size: 0.9rem;">আপনার গুগল শিটের শেয়ারেবল লিংক দিন (কলাম: <code>Topic</code>, <code>Caption</code>, <code>Media_Type</code>, <code>Media_URL</code>):</p>
-                    <form action="/drafts/import-sheet" method="post" style="display: flex; gap: 0.8rem; flex-wrap: wrap;">
-                        <input type="text" name="sheet_url" class="input-text" style="flex: 1; min-width: 280px;" value="{html.escape(active_sheet_url)}" placeholder="গুগল শিট লিংক দিন (যেমন: https://docs.google.com/spreadsheets/d/...)" required />
-                        <button type="submit" class="btn btn-primary" style="background: #0f766e;">📥 শিট সেভ ও ড্রাফট তৈরি করুন</button>
+                    <p class="helper-text" style="color: #cbd5e1; font-size: 0.9rem;">আপনার গুগল শিটের শেয়ারেবল লিংক দিন অথবা সরাসরি CSV ফাইল আপলোড করুন (কলাম: <code>Topic</code>, <code>Caption</code>, <code>Media_Type</code>, <code>Media_URL</code>):</p>
+                    <form action="/drafts/import-sheet" method="post" enctype="multipart/form-data" style="display: flex; flex-direction: column; gap: 0.8rem;">
+                        <div style="display: flex; gap: 0.8rem; flex-wrap: wrap;">
+                            <input type="text" name="sheet_url" class="input-text" style="flex: 1; min-width: 280px;" value="{html.escape(active_sheet_url)}" placeholder="গুগল শিট লিংক দিন (যেমন: https://docs.google.com/spreadsheets/d/...)" />
+                            <button type="submit" class="btn btn-primary" style="background: #0f766e;">📥 শিট সেভ ও ড্রাফট তৈরি করুন</button>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap; margin-top: 0.2rem;">
+                            <span style="color: #64748b; font-size: 0.85rem;">— অথবা —</span>
+                            <label style="cursor: pointer; background: #1e293b; border: 1px dashed #38bdf8; padding: 0.45rem 0.9rem; border-radius: 6px; font-size: 0.85rem; color: #38bdf8; display: inline-flex; align-items: center; gap: 0.4rem;">
+                                📁 সরাসরি কম্পিউটার/ফোন থেকে CSV ফাইল আপলোড করুন
+                                <input type="file" name="sheet_file" accept=".csv" style="display: none;" onchange="this.form.submit()" />
+                            </label>
+                            {f'<span style="font-size: 0.85rem; color: #34d399;">✓ অ্যাক্টিভ CSV ফাইল সংযুক্ত আছে</span>' if has_active_csv else ''}
+                        </div>
                     </form>
                     <div style="margin-top: 0.85rem; background: #0f172a; padding: 0.85rem; border-radius: 8px; border: 1px solid var(--border); font-size: 0.85rem; line-height: 1.6; color: #94a3b8;">
-                        💡 <strong style="color: #38bdf8;">শিট পাবলিক করার নিয়ম (Error 404 সমাধান):</strong><br>
+                        💡 <strong style="color: #38bdf8;">গুগল শিট লিঙ্ক দেওয়ার নিয়ম (Error 404 সমাধান):</strong><br>
                         ১. আপনার গুগল শিটের ওপরের ডান কোনায় <strong>Share</strong> বাটনে ক্লিক করুন।<br>
                         ২. <strong>General access</strong> অপশনে <em>"Restricted"</em> এর বদলে <strong>"Anyone with the link"</strong> (Viewer/দর্শক) সিলেক্ট করুন।<br>
                         ৩. তারপর <strong>Copy link</strong> করে উপরের বক্সে পেস্ট করুন।<br>
-                        ⏰ <strong style="color: #34d399;">দৈনিক অটোমেটিক শিডিউল:</strong> শিট লিংকটি একবার সেভ হয়ে গেলে প্রতিদিন <strong>সকাল ৯:০০ টা</strong> এবং <strong>রাত ৮:০০ টায়</strong> স্বয়ংক্রিয়ভাবে শিটের পরবর্তী রো থেকে ১টি করে পোস্ট ড্রাফট হিসেবে আপনার ড্যাশবোর্ডে জমা হবে!
+                        📁 <strong style="color: #facc15;">বিকল্প সহজ উপায়:</strong> গুগল শিট শেয়ারিং জটিল মনে হলে শিটটি ডাউনলোড করে (File ➔ Download ➔ Comma Separated Values .csv) সরাসরি <strong>"সরাসরি CSV ফাইল আপলোড করুন"</strong> বাটনে আপলোড করে দিন!<br>
+                        ⏰ <strong style="color: #34d399;">দৈনিক অটোমেটিক শিডিউল:</strong> শিট লিংক বা CSV ফাইল একবার যুক্ত থাকলে প্রতিদিন <strong>সকাল ৯:০০ টা</strong> এবং <strong>রাত ৮:০০ টায়</strong> স্বয়ংক্রিয়ভাবে শিটের পরবর্তী রো থেকে ১টি করে পোস্ট ড্রাফট হিসেবে আপনার ড্যাশবোর্ডে জমা হবে!
                     </div>
                 </div>
             </details>
@@ -734,11 +760,33 @@ async def create_custom_draft(
 
 
 @app.post("/drafts/import-sheet")
-async def import_from_sheet(sheet_url: str = Form("")):
-    """Imports content from a Google Sheet and creates drafts."""
+async def import_from_sheet(
+    sheet_url: str = Form(""),
+    sheet_file: Optional[UploadFile] = File(None),
+):
+    """Imports content from Google Sheet URL or direct CSV file upload, and creates drafts."""
+    # 1. If a direct CSV file was uploaded from device
+    if sheet_file and sheet_file.filename:
+        safe_filename = sheet_file.filename.lower()
+        if not safe_filename.endswith(".csv"):
+            return RedirectResponse(url="/?error=শুধুমাত্র .csv ফরম্যাটের ফাইল আপলোড করুন", status_code=303)
+        temp_dest = config.BASE_DIR / "active_content_sheet.csv"
+        try:
+            with open(temp_dest, "wb") as buffer:
+                shutil.copyfileobj(sheet_file.file, buffer)
+            count, _, err_msg = import_drafts_from_csv_file(temp_dest, max_count=5)
+            if count > 0:
+                return RedirectResponse(url="/?msg=sheet_imported", status_code=303)
+            else:
+                return RedirectResponse(url=f"/?error={err_msg}", status_code=303)
+        except Exception as e:
+            logger.error(f"CSV file processing error: {e}")
+            return RedirectResponse(url=f"/?error=CSV ফাইল প্রসেস করতে ব্যর্থ: {str(e)}", status_code=303)
+
+    # 2. Otherwise use the Google Sheet URL
     target_url = sheet_url.strip() or get_active_sheet_url()
     if not target_url:
-        return RedirectResponse(url="/?error=গুগল শিট লিংক খালি দেওয়া হয়েছে", status_code=303)
+        return RedirectResponse(url="/?error=গুগল শিট লিংক দিন অথবা একটি CSV ফাইল আপলোড করুন", status_code=303)
 
     try:
         count, _, err_msg = import_drafts_from_google_sheet(target_url, max_count=5)
