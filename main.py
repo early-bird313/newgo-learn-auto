@@ -5,6 +5,7 @@ import html
 import logging
 import os
 from pathlib import Path
+import random
 import shutil
 from typing import Optional
 import uuid
@@ -24,6 +25,7 @@ from services.draft_store import (
     get_pending_drafts,
     get_published_drafts,
     mark_draft_as_published,
+    update_draft,
 )
 from services.facebook_service import (
     publish_post_to_page,
@@ -140,6 +142,10 @@ async def home(msg: Optional[str] = None, error: Optional[str] = None):
     alert_html = ""
     if msg == "draft_created":
         alert_html = f'<div class="alert alert-success">✨ নতুন ড্রাফট যোগ হয়েছে! বর্তমানে মোট {drafts_count}টি ড্রাফট সংরক্ষিত আছে।</div>'
+    elif msg == "draft_updated":
+        alert_html = '<div class="alert alert-success">💾 ড্রাফটের ছবি/ভিডিও/ক্যাপশন সফলভাবে সেভ করা হয়েছে!</div>'
+    elif msg == "image_regenerated":
+        alert_html = '<div class="alert alert-success">🔄 নতুন এআই ছবি সফলভাবে তৈরি ও যুক্ত করা হয়েছে!</div>'
     elif msg == "published":
         alert_html = '<div class="alert alert-success">🎉 পোস্টটি সফলভাবে আপনার ফেসবুক পেজে লাইভ হয়েছে!</div>'
     elif msg == "deleted":
@@ -192,37 +198,80 @@ async def home(msg: Optional[str] = None, error: Optional[str] = None):
                 </div>
                 """
 
+            url_val = safe_video if media_type == "video" else (safe_img if not safe_local_file else "")
+
             pending_cards_html += f"""
             <div class="card post-card" id="draft_{draft_id}">
                 <div class="post-header">
                     <div style="display: flex; align-items: center; gap: 0.5rem;">
                         <span class="draft-num-badge">ড্রাফট #{idx}</span>
-                        {media_badge}
+                        <span id="badge_media_{draft_id}">{media_badge}</span>
                     </div>
                     <span class="post-time">🕒 {created_at}</span>
                 </div>
-                <div class="post-body">
-                    <div class="media-col">
-                        {media_preview}
-                        <span class="topic-tag">📌 টপিক: {safe_topic}</span>
-                    </div>
-                    <div class="caption-col">
-                        <form action="/drafts/{draft_id}/approve" method="post">
+
+                <form action="/drafts/{draft_id}/approve" method="post" enctype="multipart/form-data" id="form_draft_{draft_id}">
+                    <div class="post-body">
+                        <!-- Left Column: Media Preview & Edit Tools -->
+                        <div class="media-col">
+                            <div id="preview_box_{draft_id}">
+                                {media_preview}
+                            </div>
+                            <span class="topic-tag">📌 টপিক: {safe_topic}</span>
+
+                            <!-- Media Edit Controls -->
+                            <div class="media-edit-box">
+                                <span class="media-edit-title">🖼️ ছবি বা ভিডিও পরিবর্তন করুন:</span>
+
+                                <!-- 1. Device File Upload Button -->
+                                <label class="btn-card-upload">
+                                    📁 ডিভাইস থেকে ছবি/ভিডিও বদলান
+                                    <input type="file" name="new_media_file" id="file_input_{draft_id}" class="file-hidden-input" accept="image/*,video/*" onchange="handleCardFileChange(event, '{draft_id}')">
+                                </label>
+                                <div id="card_file_note_{draft_id}" class="card-file-note" style="display:none;"></div>
+
+                                <!-- 2. Media Type Selector -->
+                                <div style="margin-top: 0.5rem; display: flex; align-items: center; gap: 0.4rem;">
+                                    <label style="font-size: 0.8rem; color: #cbd5e1; white-space: nowrap;">টাইপ:</label>
+                                    <select name="media_type" id="media_type_{draft_id}" class="input-text-sm" onchange="handleCardTypeSelect('{draft_id}', this.value)">
+                                        <option value="photo" {"selected" if media_type == "photo" else ""}>📷 Photo (ছবি)</option>
+                                        <option value="video" {"selected" if media_type == "video" else ""}>🎥 Video (ভিডিও)</option>
+                                        <option value="text" {"selected" if media_type == "text" else ""}>📝 Text Only (ছবি ছাড়া)</option>
+                                    </select>
+                                </div>
+
+                                <!-- 3. URL Input -->
+                                <div style="margin-top: 0.4rem;">
+                                    <input type="text" name="media_url" id="media_url_{draft_id}" class="input-text-sm" placeholder="অথবা ছবি/ভিডিও লিংক (URL) দিন..." value="{url_val}" oninput="handleCardUrlInput('{draft_id}', this.value)">
+                                </div>
+
+                                <!-- 4. Regenerate AI Image Button -->
+                                <div style="margin-top: 0.45rem; display: flex; gap: 0.4rem;">
+                                    <button type="button" class="btn-regen-sm" onclick="triggerRegenerateImage('{draft_id}')">🔄 নতুন AI ছবি আনুন</button>
+                                </div>
+                            </div>
+
+                            <input type="hidden" name="local_file_path" id="local_file_{draft_id}" value="{safe_local_file}">
+                        </div>
+
+                        <!-- Right Column: Caption & Actions -->
+                        <div class="caption-col">
                             <label class="form-label">পোস্টের ক্যাপশন (প্রয়োজনে পরিবর্তন করুন):</label>
                             <textarea name="caption" class="caption-textarea" rows="8">{safe_caption}</textarea>
                             
-                            <input type="hidden" name="media_type" value="{media_type}">
-                            <input type="hidden" name="media_url" value="{safe_video if media_type == 'video' else safe_img}">
-                            <input type="hidden" name="local_file_path" value="{safe_local_file}">
-
                             <div class="card-actions">
                                 <button type="submit" class="btn btn-approve">🚀 ফেসবুকে পোস্ট করুন (Approve & Post)</button>
+                                <button type="button" class="btn btn-save-draft" onclick="submitDraftForm('{draft_id}', '/drafts/{draft_id}/update')">💾 ড্রাফটে সেভ রাখুন</button>
                             </div>
-                        </form>
-                        <form action="/drafts/{draft_id}/delete" method="post" style="margin-top: 0.5rem;">
-                            <button type="submit" class="btn btn-delete" onclick="return confirm('এই ড্রাফটটি মুছে ফেলতে চান?');">🗑️ ড্রাফট মুছুন</button>
-                        </form>
+                        </div>
                     </div>
+                </form>
+
+                <!-- Separate Delete Action -->
+                <div style="display: flex; justify-content: flex-end; margin-top: 0.6rem; border-top: 1px dashed var(--border); padding-top: 0.6rem;">
+                    <form action="/drafts/{draft_id}/delete" method="post">
+                        <button type="submit" class="btn btn-delete" onclick="return confirm('এই ড্রাফটটি মুছে ফেলতে চান?');">🗑️ ড্রাফট মুছুন</button>
+                    </form>
                 </div>
             </div>
             """
@@ -331,6 +380,20 @@ async def home(msg: Optional[str] = None, error: Optional[str] = None):
             .badge-pub {{ background: #064e3b; color: #34d399; font-size: 0.75rem; padding: 0.2rem 0.6rem; border-radius: 10px; font-weight: bold; }}
             
             .helper-text {{ font-size: 0.85rem; color: #94a3b8; margin-top: 0.3rem; }}
+
+            /* Draft Card Media Edit Styles */
+            .input-text-sm {{ width: 100%; box-sizing: border-box; background: #0f172a; border: 1px solid var(--border); color: #fff; padding: 0.45rem 0.6rem; border-radius: 6px; font-size: 0.85rem; }}
+            .input-text-sm:focus {{ outline: none; border-color: #38bdf8; }}
+            .media-edit-box {{ margin-top: 0.75rem; background: #0f172a; border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem; }}
+            .media-edit-title {{ font-size: 0.85rem; font-weight: bold; color: #38bdf8; display: block; margin-bottom: 0.45rem; }}
+            .btn-card-upload {{ display: block; text-align: center; background: #334155; color: #f8fafc; border: 1px solid #475569; padding: 0.5rem 0.8rem; border-radius: 6px; font-size: 0.85rem; font-weight: 500; cursor: pointer; position: relative; overflow: hidden; transition: background 0.2s; }}
+            .btn-card-upload:hover {{ background: #475569; }}
+            .file-hidden-input {{ position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }}
+            .card-file-note {{ font-size: 0.8rem; color: #38bdf8; margin-top: 0.35rem; background: #0284c71a; padding: 0.3rem 0.5rem; border-radius: 4px; border: 1px solid #0284c755; word-break: break-all; }}
+            .btn-regen-sm {{ flex: 1; background: #4c1d95; color: #e9d5ff; border: 1px solid #7c3aed; padding: 0.4rem 0.6rem; border-radius: 6px; font-size: 0.8rem; font-weight: 500; cursor: pointer; transition: background 0.2s; }}
+            .btn-regen-sm:hover {{ background: #5b21b6; }}
+            .btn-save-draft {{ background: #1e3a8a; color: #bfdbfe; border: 1px solid #3b82f6; padding: 0.75rem 1.1rem; border-radius: 8px; font-weight: bold; font-size: 0.95rem; cursor: pointer; transition: all 0.2s; }}
+            .btn-save-draft:hover {{ background: #1d4ed8; color: #fff; }}
         </style>
     </head>
     <body>
@@ -486,6 +549,83 @@ async def home(msg: Optional[str] = None, error: Optional[str] = None):
                 document.getElementById('preview_body').innerHTML = '';
                 document.getElementById('dropzone_label').innerText = '📁 ফাইল সিলেক্ট করতে এখানে ক্লিক করুন (Image / Video)';
             }}
+
+            function handleCardFileChange(event, draftId) {{
+                const file = event.target.files[0];
+                if (!file) return;
+
+                const note = document.getElementById('card_file_note_' + draftId);
+                note.style.display = 'block';
+                note.innerText = '✨ সিলেক্টেড: ' + file.name + ' (' + (file.size / (1024*1024)).toFixed(2) + ' MB)';
+
+                const previewBox = document.getElementById('preview_box_' + draftId);
+                const typeSelect = document.getElementById('media_type_' + draftId);
+                const badge = document.getElementById('badge_media_' + draftId);
+                const fileURL = URL.createObjectURL(file);
+
+                if (file.type.startsWith('video/')) {{
+                    typeSelect.value = 'video';
+                    previewBox.innerHTML = '<video src="' + fileURL + '" controls class="post-media" autoplay muted></video>';
+                    if (badge) badge.innerHTML = '<span class="badge-media badge-video">🎥 Video Post</span>';
+                }} else {{
+                    typeSelect.value = 'photo';
+                    previewBox.innerHTML = '<img src="' + fileURL + '" alt="Post Image" class="post-media" />';
+                    if (badge) badge.innerHTML = '<span class="badge-media badge-photo">📷 Photo Post</span>';
+                }}
+            }}
+
+            function handleCardTypeSelect(draftId, type) {{
+                const previewBox = document.getElementById('preview_box_' + draftId);
+                const badge = document.getElementById('badge_media_' + draftId);
+                const urlInput = document.getElementById('media_url_' + draftId);
+
+                if (type === 'text') {{
+                    previewBox.innerHTML = '<div class="text-only-box"><span>📄 শুধুমাত্র টেক্সট পোস্ট (কোনো ছবি বা ভিডিও পোস্ট হবে না)</span></div>';
+                    if (badge) badge.innerHTML = '<span class="badge-media badge-text">📝 Text-Only Post</span>';
+                }} else if (type === 'photo') {{
+                    if (badge) badge.innerHTML = '<span class="badge-media badge-photo">📷 Photo Post</span>';
+                    if (urlInput && urlInput.value) {{
+                        previewBox.innerHTML = '<img src="' + urlInput.value + '" alt="Post Image" class="post-media" />';
+                    }}
+                }} else if (type === 'video') {{
+                    if (badge) badge.innerHTML = '<span class="badge-media badge-video">🎥 Video Post</span>';
+                    if (urlInput && urlInput.value) {{
+                        previewBox.innerHTML = '<video src="' + urlInput.value + '" controls class="post-media"></video>';
+                    }}
+                }}
+            }}
+
+            function handleCardUrlInput(draftId, url) {{
+                if (!url.trim()) return;
+                const previewBox = document.getElementById('preview_box_' + draftId);
+                const typeSelect = document.getElementById('media_type_' + draftId);
+                const badge = document.getElementById('badge_media_' + draftId);
+
+                if (url.endsWith('.mp4') || url.endsWith('.webm') || url.endsWith('.mov')) {{
+                    typeSelect.value = 'video';
+                    previewBox.innerHTML = '<video src="' + url.trim() + '" controls class="post-media"></video>';
+                    if (badge) badge.innerHTML = '<span class="badge-media badge-video">🎥 Video Post</span>';
+                }} else {{
+                    typeSelect.value = 'photo';
+                    previewBox.innerHTML = '<img src="' + url.trim() + '" alt="Post Image" class="post-media" />';
+                    if (badge) badge.innerHTML = '<span class="badge-media badge-photo">📷 Photo Post</span>';
+                }}
+            }}
+
+            function triggerRegenerateImage(draftId) {{
+                if (!confirm('এই ড্রাফটটির জন্য নতুন একটি AI ছবি তৈরি করতে চান?')) return;
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = '/drafts/' + draftId + '/regenerate-image';
+                document.body.appendChild(form);
+                form.submit();
+            }}
+
+            function submitDraftForm(draftId, actionUrl) {{
+                const form = document.getElementById('form_draft_' + draftId);
+                form.action = actionUrl;
+                form.submit();
+            }}
         </script>
     </body>
     </html>
@@ -606,10 +746,12 @@ async def approve_and_publish_draft(
     media_type: str = Form("photo"),
     media_url: str = Form(""),
     local_file_path: str = Form(""),
+    new_media_file: Optional[UploadFile] = File(None),
 ):
     """
     Human-in-the-Loop Action:
     User clicked 'Approve & Post'. Publishes Text, Photo, or Video directly to Facebook Page.
+    Supports on-the-fly media file replacement.
     """
     draft = get_draft_by_id(draft_id)
     if not draft:
@@ -619,6 +761,32 @@ async def approve_and_publish_draft(
     file_path = local_file_path.strip() or (draft.get("local_file_path") or "")
     img_url = media_url.strip() if m_type == "photo" else (draft.get("image_url") or "")
     vid_url = media_url.strip() if m_type == "video" else (draft.get("video_url") or "")
+
+    # If new file was selected directly inside the draft card
+    if new_media_file and new_media_file.filename:
+        safe_ext = Path(new_media_file.filename).suffix.lower()
+        unique_name = f"{str(uuid.uuid4())[:8]}_{new_media_file.filename.replace(' ', '_')}"
+        target_path = config.UPLOADS_DIR / unique_name
+        try:
+            with open(target_path, "wb") as buffer:
+                shutil.copyfileobj(new_media_file.file, buffer)
+            file_path = str(target_path)
+            if safe_ext in [".mp4", ".mov", ".avi", ".mkv", ".webm"]:
+                m_type = "video"
+                vid_url = f"/uploads/{unique_name}"
+                img_url = ""
+            else:
+                m_type = "photo"
+                img_url = f"/uploads/{unique_name}"
+                vid_url = ""
+            logger.info(f"Draft {draft_id} updated with new file for approval: {file_path}")
+        except Exception as e:
+            logger.error(f"Error saving replacement file in approve: {e}")
+
+    if m_type == "text":
+        img_url = ""
+        vid_url = ""
+        file_path = ""
 
     logger.info(f"User APPROVED draft ID {draft_id} (Type: {m_type}). Publishing to Facebook Page...")
 
@@ -640,6 +808,94 @@ async def approve_and_publish_draft(
         err_msg = str(result.get("error", "Failed to publish to Facebook"))
         logger.error(f"Failed to publish approved draft: {err_msg}")
         return RedirectResponse(url=f"/?error={err_msg}", status_code=303)
+
+
+@app.post("/drafts/{draft_id}/update")
+async def update_existing_draft(
+    draft_id: str,
+    caption: str = Form(...),
+    media_type: str = Form("photo"),
+    media_url: str = Form(""),
+    local_file_path: str = Form(""),
+    new_media_file: Optional[UploadFile] = File(None),
+):
+    """
+    Updates the draft in the queue (caption, photo, video, or text) without posting to Facebook.
+    """
+    draft = get_draft_by_id(draft_id)
+    if not draft:
+        raise HTTPException(status_code=404, detail="Draft not found")
+
+    m_type = media_type.lower().strip()
+    file_path = local_file_path.strip() or (draft.get("local_file_path") or "")
+    img_url = media_url.strip() if m_type == "photo" else (draft.get("image_url") or "")
+    vid_url = media_url.strip() if m_type == "video" else (draft.get("video_url") or "")
+
+    # If new file is uploaded
+    if new_media_file and new_media_file.filename:
+        safe_ext = Path(new_media_file.filename).suffix.lower()
+        unique_name = f"{str(uuid.uuid4())[:8]}_{new_media_file.filename.replace(' ', '_')}"
+        target_path = config.UPLOADS_DIR / unique_name
+        try:
+            with open(target_path, "wb") as buffer:
+                shutil.copyfileobj(new_media_file.file, buffer)
+            file_path = str(target_path)
+            if safe_ext in [".mp4", ".mov", ".avi", ".mkv", ".webm"]:
+                m_type = "video"
+                vid_url = f"/uploads/{unique_name}"
+                img_url = ""
+            else:
+                m_type = "photo"
+                img_url = f"/uploads/{unique_name}"
+                vid_url = ""
+            logger.info(f"Updated draft {draft_id} with file: {file_path}")
+        except Exception as e:
+            logger.error(f"Error saving uploaded file in update: {e}")
+            return RedirectResponse(url=f"/?error=Failed to upload file: {str(e)}", status_code=303)
+    elif media_url.strip():
+        if m_type == "video":
+            vid_url = media_url.strip()
+            file_path = ""
+        elif m_type == "photo":
+            img_url = media_url.strip()
+            file_path = ""
+    elif m_type == "text":
+        img_url = ""
+        vid_url = ""
+        file_path = ""
+
+    update_draft(
+        draft_id=draft_id,
+        caption=caption.strip(),
+        image_url=img_url,
+        video_url=vid_url,
+        local_file_path=file_path,
+        media_type=m_type,
+    )
+    return RedirectResponse(url="/?msg=draft_updated", status_code=303)
+
+
+@app.post("/drafts/{draft_id}/regenerate-image")
+async def regenerate_image_for_draft(draft_id: str):
+    """
+    Regenerates a fresh AI image for an existing draft using its topic/keyword.
+    """
+    draft = get_draft_by_id(draft_id)
+    if not draft:
+        raise HTTPException(status_code=404, detail="Draft not found")
+
+    keyword = draft.get("keyword") or draft.get("topic") or config.DEFAULT_POST_TOPIC
+    new_img_url = get_free_image_url(keyword, seed=random.randint(100, 999999))
+
+    update_draft(
+        draft_id=draft_id,
+        image_url=new_img_url,
+        video_url="",
+        local_file_path="",
+        media_type="photo",
+    )
+    logger.info(f"Regenerated AI image for draft {draft_id}: {new_img_url}")
+    return RedirectResponse(url="/?msg=image_regenerated", status_code=303)
 
 
 @app.post("/drafts/{draft_id}/delete")

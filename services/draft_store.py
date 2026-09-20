@@ -133,3 +133,36 @@ def delete_draft(draft_id: str) -> bool:
         logger.info(f"Deleted draft ID: {draft_id}")
         return True
     return False
+
+
+def update_draft(
+    draft_id: str,
+    caption: str = None,
+    image_url: str = None,
+    video_url: str = None,
+    local_file_path: str = None,
+    media_type: str = None,
+) -> bool:
+    """
+    Updates an existing draft's caption, media files, or media type.
+    """
+    drafts = _load_drafts()
+    for d in drafts:
+        if d.get("id") == draft_id:
+            if caption is not None:
+                d["caption"] = caption.strip()
+            if media_type is not None:
+                m_type = media_type.lower().strip()
+                if m_type in ["photo", "video", "text"]:
+                    d["media_type"] = m_type
+            if image_url is not None:
+                d["image_url"] = image_url.strip()
+            if video_url is not None:
+                d["video_url"] = video_url.strip()
+            if local_file_path is not None:
+                d["local_file_path"] = local_file_path
+            _save_drafts(drafts)
+            logger.info(f"Updated draft {draft_id} (Media: {d.get('media_type')}, File: {bool(d.get('local_file_path'))})")
+            return True
+    return False
+

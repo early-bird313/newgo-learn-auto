@@ -1,3 +1,4 @@
+import random
 import urllib.parse
 import logging
 import requests
@@ -5,7 +6,7 @@ import config
 
 logger = logging.getLogger(__name__)
 
-def get_free_image_url(search_keyword: str, visual_prompt: str = "") -> str:
+def get_free_image_url(search_keyword: str, visual_prompt: str = "", seed: int = None) -> str:
     """
     Returns a high-quality, royalty-free image URL matching the topic.
     Supports Pollinations AI (100% free, no API key needed),
@@ -42,7 +43,8 @@ def get_free_image_url(search_keyword: str, visual_prompt: str = "") -> str:
     # Generates a realistic high-definition image on the fly based on the prompt
     prompt_to_use = visual_prompt if visual_prompt else f"{search_keyword}, peaceful, aesthetic, high quality, 4k"
     encoded_prompt = urllib.parse.quote(prompt_to_use)
-    pollinations_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1200&height=630&nologo=true&seed=42"
+    current_seed = seed if seed is not None else random.randint(100, 999999)
+    pollinations_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1200&height=630&nologo=true&seed={current_seed}"
     
     logger.info(f"Using Pollinations AI image URL: {pollinations_url}")
     return pollinations_url
