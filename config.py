@@ -25,10 +25,10 @@ DEFAULT_POST_TOPIC = os.getenv(
     "AI Tools & Technologies, Smart Tips & Useful Tricks, AI & Work Automation, Learning Resources, Productivity & Digital Skills, and New Ideas for the Future",
 ).strip()
 
-# Twice Daily Draft Schedule: Morning 9:00 AM & Evening 6:00 PM (Bangladesh Time)
+# Twice Daily Draft Schedule: Morning 9:00 AM & Night 8:00 PM (Bangladesh Time)
 SCHEDULE_MORNING_HOUR = int(os.getenv("SCHEDULE_MORNING_HOUR", "9"))
 SCHEDULE_MORNING_MINUTE = int(os.getenv("SCHEDULE_MORNING_MINUTE", "0"))
-SCHEDULE_EVENING_HOUR = int(os.getenv("SCHEDULE_EVENING_HOUR", "18"))
+SCHEDULE_EVENING_HOUR = int(os.getenv("SCHEDULE_EVENING_HOUR", "20"))
 SCHEDULE_EVENING_MINUTE = int(os.getenv("SCHEDULE_EVENING_MINUTE", "0"))
 
 # Google Sheets Content Queue (CSV export URL or Google Sheet link)

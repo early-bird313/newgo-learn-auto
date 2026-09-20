@@ -33,7 +33,7 @@ from services.facebook_service import (
     send_typing_indicator,
 )
 from services.gemini_service import generate_chat_reply, generate_page_post
-from services.google_sheets_service import import_drafts_from_google_sheet
+from services.google_sheets_service import get_active_sheet_url, import_drafts_from_google_sheet
 from services.image_service import get_free_image_url
 
 # Configure logging
@@ -46,24 +46,27 @@ logger = logging.getLogger("fb_automation")
 # Track recent message IDs to prevent duplicate webhook processing
 processed_message_ids = deque(maxlen=500)
 
-# Background scheduler for morning and evening draft generation
+# Background scheduler for morning and night draft generation
 scheduler = AsyncIOScheduler()
 
 
 async def scheduled_daily_post():
     """
-    Scheduled task to prepare a draft post (sakal 9:00 AM & shondha 6:00 PM BST).
+    Scheduled task to prepare a draft post (sakal 9:00 AM & rat 8:00 PM BST).
     Checks Google Sheet first if configured, else uses Gemini AI topic.
     NOTE: Stored in draft_store for user review and approval before posting to Facebook.
     """
-    logger.info("Executing scheduled draft creation (Bangladesh Timezone)...")
+    logger.info("Executing scheduled draft creation (Bangladesh Timezone: 9 AM / 8 PM)...")
     try:
-        # 1. Try importing an unused topic from Google Sheet if configured
-        if config.GOOGLE_SHEET_CSV_URL:
-            count, _ = import_drafts_from_google_sheet(config.GOOGLE_SHEET_CSV_URL, max_count=1)
+        # 1. Try importing 1 unused row from Google Sheet if configured
+        active_sheet_url = get_active_sheet_url()
+        if active_sheet_url:
+            count, drafts, err_msg = import_drafts_from_google_sheet(active_sheet_url, max_count=1)
             if count > 0:
-                logger.info("Successfully created scheduled draft from Google Sheet!")
+                logger.info(f"Successfully drafted post from Google Sheet! Draft ID: {drafts[0]['id']}")
                 return
+            else:
+                logger.warning(f"Google Sheet import did not yield a draft: {err_msg}. Falling back to Gemini AI...")
 
         # 2. Otherwise generate via Gemini AI
         caption, keyword, visual_prompt = generate_page_post(config.DEFAULT_POST_TOPIC)
@@ -75,14 +78,14 @@ async def scheduled_daily_post():
             keyword=keyword,
             media_type="photo",
         )
-        logger.info(f"Scheduled draft prepared successfully! Draft ID: {draft['id']}")
+        logger.info(f"Scheduled draft prepared via Gemini AI! Draft ID: {draft['id']}")
     except Exception as e:
         logger.error(f"Error preparing scheduled draft post: {e}")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: Register Morning 9:00 AM and Evening 6:00 PM schedules (Asia/Dhaka)
+    # Startup: Register Morning 9:00 AM and Night 8:00 PM schedules (Asia/Dhaka)
     logger.info(f"Starting background scheduler in timezone: {config.APP_TIMEZONE}")
     
     # Morning: 9:00 AM BST
@@ -98,7 +101,7 @@ async def lifespan(app: FastAPI):
         replace_existing=True,
     )
 
-    # Evening: 6:00 PM BST (18:00)
+    # Night: 8:00 PM BST (20:00)
     evening_trigger = CronTrigger(
         hour=config.SCHEDULE_EVENING_HOUR,
         minute=config.SCHEDULE_EVENING_MINUTE,
@@ -138,6 +141,7 @@ async def home(msg: Optional[str] = None, error: Optional[str] = None):
     published_drafts = get_published_drafts(limit=10)
     current_time = get_current_bst_time_str()
     drafts_count = len(pending_drafts)
+    active_sheet_url = get_active_sheet_url()
 
     alert_html = ""
     if msg == "draft_created":
@@ -151,7 +155,7 @@ async def home(msg: Optional[str] = None, error: Optional[str] = None):
     elif msg == "deleted":
         alert_html = '<div class="alert alert-info">🗑️ ড্রাফটটি সফলভাবে মুছে ফেলা হয়েছে।</div>'
     elif msg == "sheet_imported":
-        alert_html = '<div class="alert alert-success">📊 গুগল শিট থেকে সফলভাবে কনটেন্ট ইমপোর্ট করে ড্রাফট তৈরি করা হয়েছে!</div>'
+        alert_html = '<div class="alert alert-success">📊 গুগল শিট লিংক সফলভাবে সেভ হয়েছে এবং কনটেন্ট ড্রাফট করা হয়েছে! প্রতিদিন সকাল ৯:০০ টা ও রাত ৮:০০ টায় স্বয়ংক্রিয়ভাবে এখান থেকে পোস্ট ড্রাফট হবে।</div>'
     elif error:
         alert_html = f'<div class="alert alert-error">❌ এরর: {html.escape(error)}</div>'
 
@@ -468,14 +472,21 @@ async def home(msg: Optional[str] = None, error: Optional[str] = None):
             </div>
 
             <!-- Action 3: Google Sheets Sync (Collapsible) -->
-            <details class="card" style="cursor: pointer;">
-                <summary style="font-weight: bold; color: #cbd5e1; font-size: 1rem;">📊 গুগল শিট থেকে স্বয়ংক্রিয় কন্টেন্ট ইমপোর্ট (ক্লিক করে খুলুন)</summary>
+            <details class="card" style="cursor: pointer;" {"open" if active_sheet_url else ""}>
+                <summary style="font-weight: bold; color: #cbd5e1; font-size: 1rem;">📊 গুগল শিট থেকে কন্টেন্ট অটো-শিডিউল ও ড্রাফট তৈরি</summary>
                 <div style="margin-top: 1rem;">
-                    <p class="helper-text">আপনার গুগল শিটের শেয়ারেবল লিংক দিন (কলাম: Topic, Caption, Media_Type, Media_URL):</p>
+                    <p class="helper-text" style="color: #cbd5e1; font-size: 0.9rem;">আপনার গুগল শিটের শেয়ারেবল লিংক দিন (কলাম: <code>Topic</code>, <code>Caption</code>, <code>Media_Type</code>, <code>Media_URL</code>):</p>
                     <form action="/drafts/import-sheet" method="post" style="display: flex; gap: 0.8rem; flex-wrap: wrap;">
-                        <input type="text" name="sheet_url" class="input-text" style="flex: 1; min-width: 280px;" value="{html.escape(config.GOOGLE_SHEET_CSV_URL)}" placeholder="গুগল শিট লিংক পেস্ট করুন..." required />
-                        <button type="submit" class="btn btn-primary" style="background: #0f766e;">📥 শিট থেকে ড্রাফট আনুন</button>
+                        <input type="text" name="sheet_url" class="input-text" style="flex: 1; min-width: 280px;" value="{html.escape(active_sheet_url)}" placeholder="গুগল শিট লিংক দিন (যেমন: https://docs.google.com/spreadsheets/d/...)" required />
+                        <button type="submit" class="btn btn-primary" style="background: #0f766e;">📥 শিট সেভ ও ড্রাফট তৈরি করুন</button>
                     </form>
+                    <div style="margin-top: 0.85rem; background: #0f172a; padding: 0.85rem; border-radius: 8px; border: 1px solid var(--border); font-size: 0.85rem; line-height: 1.6; color: #94a3b8;">
+                        💡 <strong style="color: #38bdf8;">শিট পাবলিক করার নিয়ম (Error 404 সমাধান):</strong><br>
+                        ১. আপনার গুগল শিটের ওপরের ডান কোনায় <strong>Share</strong> বাটনে ক্লিক করুন।<br>
+                        ২. <strong>General access</strong> অপশনে <em>"Restricted"</em> এর বদলে <strong>"Anyone with the link"</strong> (Viewer/দর্শক) সিলেক্ট করুন।<br>
+                        ৩. তারপর <strong>Copy link</strong> করে উপরের বক্সে পেস্ট করুন।<br>
+                        ⏰ <strong style="color: #34d399;">দৈনিক অটোমেটিক শিডিউল:</strong> শিট লিংকটি একবার সেভ হয়ে গেলে প্রতিদিন <strong>সকাল ৯:০০ টা</strong> এবং <strong>রাত ৮:০০ টায়</strong> স্বয়ংক্রিয়ভাবে শিটের পরবর্তী রো থেকে ১টি করে পোস্ট ড্রাফট হিসেবে আপনার ড্যাশবোর্ডে জমা হবে!
+                    </div>
                 </div>
             </details>
 
@@ -642,8 +653,9 @@ async def health():
         "current_bst_time": get_current_bst_time_str(),
         "schedules": [
             f"{config.SCHEDULE_MORNING_HOUR:02d}:{config.SCHEDULE_MORNING_MINUTE:02d} BST (Morning)",
-            f"{config.SCHEDULE_EVENING_HOUR:02d}:{config.SCHEDULE_EVENING_MINUTE:02d} BST (Evening)",
+            f"{config.SCHEDULE_EVENING_HOUR:02d}:{config.SCHEDULE_EVENING_MINUTE:02d} BST (Night)",
         ],
+        "active_google_sheet": bool(get_active_sheet_url()),
     }
 
 
@@ -724,16 +736,16 @@ async def create_custom_draft(
 @app.post("/drafts/import-sheet")
 async def import_from_sheet(sheet_url: str = Form("")):
     """Imports content from a Google Sheet and creates drafts."""
-    target_url = sheet_url.strip() or config.GOOGLE_SHEET_CSV_URL
+    target_url = sheet_url.strip() or get_active_sheet_url()
     if not target_url:
-        return RedirectResponse(url="/?error=Google Sheet URL is empty", status_code=303)
+        return RedirectResponse(url="/?error=গুগল শিট লিংক খালি দেওয়া হয়েছে", status_code=303)
 
     try:
-        count, _ = import_drafts_from_google_sheet(target_url, max_count=5)
+        count, _, err_msg = import_drafts_from_google_sheet(target_url, max_count=5)
         if count > 0:
             return RedirectResponse(url="/?msg=sheet_imported", status_code=303)
         else:
-            return RedirectResponse(url="/?error=No unused or valid rows found in Google Sheet", status_code=303)
+            return RedirectResponse(url=f"/?error={err_msg}", status_code=303)
     except Exception as e:
         logger.error(f"Google Sheet import error: {e}")
         return RedirectResponse(url=f"/?error={str(e)}", status_code=303)
