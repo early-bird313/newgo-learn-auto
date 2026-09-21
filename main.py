@@ -27,18 +27,38 @@ from services.draft_store import (
     mark_draft_as_published,
     update_draft,
 )
-from services.facebook_service import (
-    ensure_page_webhook_subscribed,
-    publish_post_to_page,
-    send_messenger_reply,
-    send_typing_indicator,
-)
+try:
+    from services.facebook_service import (
+        ensure_page_webhook_subscribed,
+        publish_post_to_page,
+        send_messenger_reply,
+        send_typing_indicator,
+    )
+except ImportError:
+    from services.facebook_service import (
+        publish_post_to_page,
+        send_messenger_reply,
+        send_typing_indicator,
+    )
+    def ensure_page_webhook_subscribed():
+        return False
+
 from services.gemini_service import generate_chat_reply, generate_page_post
-from services.google_sheets_service import (
-    get_active_sheet_url,
-    import_drafts_from_csv_file,
-    import_drafts_from_google_sheet,
-)
+
+try:
+    from services.google_sheets_service import (
+        get_active_sheet_url,
+        import_drafts_from_csv_file,
+        import_drafts_from_google_sheet,
+    )
+except ImportError:
+    from services.google_sheets_service import (
+        get_active_sheet_url,
+        import_drafts_from_google_sheet,
+    )
+    def import_drafts_from_csv_file(*args, **kwargs):
+        return 0, [], "CSV processing module pending update"
+
 from services.image_service import get_free_image_url
 
 # Configure logging
