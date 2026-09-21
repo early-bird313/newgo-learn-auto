@@ -28,6 +28,7 @@ from services.draft_store import (
     update_draft,
 )
 from services.facebook_service import (
+    ensure_page_webhook_subscribed,
     publish_post_to_page,
     send_messenger_reply,
     send_typing_indicator,
@@ -132,6 +133,13 @@ async def lifespan(app: FastAPI):
     logger.info(
         f"Scheduler active! Drafts prepared daily at {config.SCHEDULE_MORNING_HOUR:02d}:{config.SCHEDULE_MORNING_MINUTE:02d} AM and {config.SCHEDULE_EVENING_HOUR:02d}:{config.SCHEDULE_EVENING_MINUTE:02d} (BST)"
     )
+
+    # Ensure Facebook Page is subscribed to messages webhook
+    try:
+        ensure_page_webhook_subscribed()
+    except Exception as e:
+        logger.warning(f"Failed to auto-subscribe page webhook during startup: {e}")
+
     yield
     scheduler.shutdown()
     logger.info("Scheduler stopped.")
@@ -685,6 +693,72 @@ async def health():
     }
 
 
+@app.get("/privacy", response_class=HTMLResponse)
+async def privacy_policy():
+    """Official Privacy Policy required by Meta Developer Platform for Live Mode."""
+    return HTMLResponse(content="""
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Privacy Policy - NewGo Learn Auto</title>
+        <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; max-width: 800px; margin: 40px auto; padding: 0 20px; color: #333; }
+            h1, h2 { color: #1e3a8a; }
+            .card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; margin-top: 20px; }
+        </style>
+    </head>
+    <body>
+        <h1>Privacy Policy for NewGo Learn Auto</h1>
+        <p><strong>Effective Date:</strong> September 2026</p>
+        <p>NewGo Learn Auto ("we", "our", or "the App") respects your privacy and is committed to protecting the information of users who interact with our Facebook Page and Messenger assistant.</p>
+        
+        <h2>1. Information We Process</h2>
+        <p>When you send a message to our Facebook Page via Messenger, we receive your publicly accessible Facebook User ID (PSID) and the content of your message to provide automated, helpful customer assistance.</p>
+
+        <h2>2. How We Use the Information</h2>
+        <ul>
+            <li>To generate relevant, factual, and polite replies to your questions in real time.</li>
+            <li>To provide customer support and educational assistance related to our page content.</li>
+        </ul>
+
+        <h2>3. Data Storage and Protection</h2>
+        <p>We do not sell, rent, or trade user data to any third party. Transient conversation history is held temporarily in volatile memory solely to maintain conversational context and is automatically recycled.</p>
+
+        <h2>4. Data Deletion Requests</h2>
+        <p>Users can request deletion of any associated interaction data at any time by messaging our Facebook Page directly or emailing our administrative support team.</p>
+
+        <h2>5. Contact Us</h2>
+        <p>For any questions or concerns regarding this privacy policy, please contact our Facebook Page administrators via Meta Business Suite.</p>
+    </body>
+    </html>
+    """)
+
+
+@app.get("/terms", response_class=HTMLResponse)
+async def terms_of_service():
+    """Terms of Service required by Meta Developer Platform."""
+    return HTMLResponse(content="""
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Terms of Service - NewGo Learn Auto</title>
+        <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; max-width: 800px; margin: 40px auto; padding: 0 20px; color: #333; }
+            h1, h2 { color: #1e3a8a; }
+        </style>
+    </head>
+    <body>
+        <h1>Terms of Service</h1>
+        <p>By interacting with the NewGo Learn Auto Facebook Page and assistant, you agree that responses are generated to assist with educational and inquiry needs. You agree not to send spam, abusive language, or prohibited materials.</p>
+    </body>
+    </html>
+    """)
+
+
 # ==============================================================================
 # 1. Draft Actions (Generate 1 by 1, Import Sheet, Custom Upload, Approve, Delete)
 # ==============================================================================
@@ -1001,6 +1075,7 @@ async def process_incoming_message(sender_id: str, message_text: str):
 async def receive_webhook(request: Request, background_tasks: BackgroundTasks):
     try:
         payload = await request.json()
+        logger.info(f"Incoming Webhook Payload: {payload}")
     except Exception as e:
         logger.error(f"Failed to parse webhook JSON: {e}")
         return JSONResponse(content={"status": "invalid json"}, status_code=400)
@@ -1009,22 +1084,47 @@ async def receive_webhook(request: Request, background_tasks: BackgroundTasks):
         for entry in payload.get("entry", []):
             for messaging_event in entry.get("messaging", []):
                 sender_id = messaging_event.get("sender", {}).get("id")
-                message = messaging_event.get("message")
+                if not sender_id:
+                    continue
 
-                if message and "text" in message:
-                    message_id = message.get("mid")
+                user_text = ""
+                message_id = ""
+
+                # Case 1: Postback event (e.g., Get Started button or menu)
+                if "postback" in messaging_event:
+                    postback = messaging_event["postback"]
+                    user_text = postback.get("title") or postback.get("payload") or "Get Started"
+                    message_id = f"pb_{messaging_event.get('timestamp')}_{sender_id}"
+
+                # Case 2: Standard message event (Text, Sticker/Thumbs up, or Attachment)
+                elif "message" in messaging_event:
+                    message = messaging_event["message"]
                     if message.get("is_echo"):
                         continue
-                    if message_id in processed_message_ids:
-                        continue
-                    if message_id:
-                        processed_message_ids.append(message_id)
+                    message_id = message.get("mid", "")
 
-                    user_text = message.get("text", "").strip()
-                    logger.info(f"New incoming message from {sender_id}: {user_text}")
-                    background_tasks.add_task(
-                        process_incoming_message, sender_id, user_text
-                    )
+                    if "text" in message and message["text"]:
+                        user_text = message["text"].strip()
+                    elif message.get("sticker_id"):
+                        # User sent a sticker or Facebook thumbs up (like button)
+                        user_text = "👍"
+                    elif message.get("attachments"):
+                        att_type = message["attachments"][0].get("type", "ফাইল")
+                        user_text = f"[{att_type} পাঠিয়েছেন]"
+
+                if not user_text:
+                    continue
+
+                if message_id and message_id in processed_message_ids:
+                    logger.info(f"Duplicate message ignored: {message_id}")
+                    continue
+                if message_id:
+                    processed_message_ids.append(message_id)
+
+                logger.info(f"New incoming message from {sender_id}: {user_text}")
+                background_tasks.add_task(
+                    process_incoming_message, sender_id, user_text
+                )
 
         return Response(content="EVENT_RECEIVED", status_code=200)
 
