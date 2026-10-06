@@ -122,19 +122,23 @@ def generate_page_post(topic_hint: str = "") -> Tuple[str, str, str]:
     if not client:
         # Fallback post if Gemini key is not set
         caption = f"আসসালামু আলাইকুম! 🚀\n\nপ্রযুক্তির যুগে নিজেকে একধাপ এগিয়ে রাখতে প্রতিদিন নতুন নতুন ডিজিটাল স্কিলস ও এআই টুলস শিখুন। স্মার্ট কাজই আপনাকে সফল করে তুলবে।\n\n#AITools #Automation #Productivity #NewGoLearn"
-        return caption, "futuristic artificial intelligence workspace technology", "A modern futuristic workspace with glowing artificial intelligence holographic screens, high-tech aesthetic, 8k"
+        return caption, "abstract futuristic ai technology circuit", "A glowing abstract futuristic AI neural network circuit board, digital data stream, no humans, cinematic 8k"
 
     prompt = f"""
 তুমি একজন দক্ষ ফেসবুক কনটেন্ট ক্রিয়েটর।
 নিচের বিষয়ের ওপর ভিত্তি করে একটি অত্যন্ত আকর্ষণীয়, শিক্ষণীয় ও এনগেজিং ফেসবুক পোস্ট তৈরি করো:
 বিষয়: "{topic}"
 
+⚠️ কঠোর ছবি নির্দেশিকা (STRICT IMAGE RULES - NO HUMANS / NO FEMALES):
+- ছবিতে কোনো মানুষ, নারী, পুরুষ, অবয়ব, মুখমণ্ডল, হাত বা প্রতিকৃতি থাকবে না (Strictly NO humans, NO women, NO female figures, NO men, NO persons, NO faces, NO portraits, NO human hands)।
+- ছবির প্রম্পট (visual_prompt) হতে হবে শুধুমাত্র বিমূর্ত প্রযুক্তি: যেমন glowing AI neural circuits, futuristic cybernetic hardware, data visualization, minimalist futuristic technology, no humans।
+
 আউটপুটটি অবশ্যই সম্পূর্ণ ভ্যালিড JSON ফরম্যাটে হতে হবে (অন্য কোনো অতিরিক্ত টেক্সট বা মার্কডাউন ছাড়া)।
 JSON স্কিমা:
 {{
   "caption": "সম্পূর্ণ ফেসবুক পোস্টের ক্যাপশন। শুরুতে সালাম, মাঝে আকর্ষণীয় মূল বার্তা ও উপদেশ, এবং শেষে ৩-৫টি ট্রেন্ডিং হ্যাশট্যাগ (যেমন #AITools #Automation #Productivity ইত্যাদি)। ইমোজি ব্যবহার করবে।",
-  "image_keyword": "ছবি সার্চ করার জন্য ২-৪ শব্দের ইংরেজি কিওয়ার্ড (যেমন: 'futuristic artificial intelligence tech workspace', 'robot automation technology')",
-  "visual_prompt": "ছবি জেনারেট করার জন্য বিস্তারিত ইংরেজি প্রম্পট (যেমন: 'A modern futuristic technology workspace, glowing neon AI circuits, sleek robotic assistant, cinematic lighting, 8k')"
+  "image_keyword": "ছবি সার্চ করার জন্য ২-৪ শব্দের ইংরেজি কিওয়ার্ড (যেমন: 'abstract ai circuit board technology', 'futuristic data server')",
+  "visual_prompt": "ছবি জেনারেট করার জন্য বিস্তারিত ইংরেজি প্রম্পট (যেমন: 'A modern glowing abstract cybernetic circuit board, neon data streams, minimalist tech hardware, no humans, cinematic lighting, 8k')"
 }}
 """
 

@@ -11,6 +11,33 @@ GRAPH_API_URL = f"https://graph.facebook.com/{config.FB_GRAPH_API_VERSION}"
 GRAPH_VIDEO_URL = f"https://graph-video.facebook.com/{config.FB_GRAPH_API_VERSION}"
 
 
+def ensure_page_webhook_subscribed() -> bool:
+    """
+    Subscribes the Facebook Page to this app's webhooks for messages and messaging_postbacks.
+    Required for Meta to forward real-time Messenger messages to our webhook endpoint.
+    """
+    if not config.FB_PAGE_ACCESS_TOKEN or not config.FB_PAGE_ID:
+        logger.warning("FB_PAGE_ACCESS_TOKEN or FB_PAGE_ID not set. Skipping webhook subscription.")
+        return False
+    try:
+        url = f"{GRAPH_API_URL}/{config.FB_PAGE_ID}/subscribed_apps"
+        params = {
+            "subscribed_fields": "messages,messaging_postbacks",
+            "access_token": config.FB_PAGE_ACCESS_TOKEN,
+        }
+        res = requests.post(url, params=params, timeout=10)
+        data = res.json()
+        if data.get("success"):
+            logger.info("Successfully ensured Facebook Page is subscribed to webhook events!")
+            return True
+        else:
+            logger.warning(f"Could not auto-subscribe page to webhooks: {data}")
+            return False
+    except Exception as e:
+        logger.error(f"Error subscribing page to webhooks: {e}")
+        return False
+
+
 def send_typing_indicator(recipient_id: str, action: str = "typing_on") -> bool:
     """Sends typing indicator (typing_on / typing_off) to user in Messenger."""
     if not config.FB_PAGE_ACCESS_TOKEN:

@@ -60,6 +60,11 @@ except ImportError:
         return 0, [], "CSV processing module pending update"
 
 from services.image_service import get_free_image_url
+from services.news_agent_service import (
+    get_agent_memory,
+    get_next_mode,
+    run_autonomous_content_agent,
+)
 
 # Configure logging
 logging.basicConfig(
@@ -78,32 +83,24 @@ scheduler = AsyncIOScheduler()
 async def scheduled_daily_post():
     """
     Scheduled task to prepare a draft post (sakal 9:00 AM & rat 8:00 PM BST).
-    Checks uploaded CSV first, then Google Sheet, else falls back to Gemini AI topic.
+    Executes Autonomous Content Agent (alternating Top AI News and AI Tips & Tricks).
+    Strictly follows abstract tech imagery (NO humans, NO female figures).
     NOTE: Stored in draft_store for user review and approval before posting to Facebook.
     """
-    logger.info("Executing scheduled draft creation (Bangladesh Timezone: 9 AM / 8 PM)...")
+    logger.info("Executing scheduled draft creation via Autonomous AI Agent (Bangladesh Timezone: 9 AM / 8 PM)...")
     try:
-        # 1. Try importing 1 unused row from local CSV file if uploaded
-        active_csv_path = config.BASE_DIR / "active_content_sheet.csv"
-        if active_csv_path.exists():
-            count, drafts, err_msg = import_drafts_from_csv_file(active_csv_path, max_count=1)
-            if count > 0:
-                logger.info(f"Successfully drafted post from local CSV! Draft ID: {drafts[0]['id']}")
+        # 1. Autonomous AI Content Agent (Alternating News and Tips & Tricks)
+        try:
+            agent_result = run_autonomous_content_agent()
+            if agent_result.get("success"):
+                logger.info(
+                    f"Scheduled draft prepared via Autonomous AI Agent! Mode: {agent_result.get('mode')}, Draft ID: {agent_result.get('draft_id')}"
+                )
                 return
-            else:
-                logger.warning(f"Local CSV import did not yield a draft: {err_msg}")
+        except Exception as agent_err:
+            logger.warning(f"Autonomous agent draft failed: {agent_err}. Falling back to Gemini AI...")
 
-        # 2. Try importing 1 unused row from Google Sheet if configured
-        active_sheet_url = get_active_sheet_url()
-        if active_sheet_url:
-            count, drafts, err_msg = import_drafts_from_google_sheet(active_sheet_url, max_count=1)
-            if count > 0:
-                logger.info(f"Successfully drafted post from Google Sheet! Draft ID: {drafts[0]['id']}")
-                return
-            else:
-                logger.warning(f"Google Sheet import did not yield a draft: {err_msg}. Falling back to Gemini AI...")
-
-        # 3. Otherwise generate via Gemini AI
+        # 2. Standard Gemini AI Fallback
         caption, keyword, visual_prompt = generate_page_post(config.DEFAULT_POST_TOPIC)
         image_url = get_free_image_url(keyword, visual_prompt)
         draft = add_draft(
@@ -183,22 +180,24 @@ async def home(msg: Optional[str] = None, error: Optional[str] = None):
     published_drafts = get_published_drafts(limit=10)
     current_time = get_current_bst_time_str()
     drafts_count = len(pending_drafts)
-    active_sheet_url = get_active_sheet_url()
-    has_active_csv = (config.BASE_DIR / "active_content_sheet.csv").exists()
+
+    agent_mem = get_agent_memory()
+    next_agent_mode = get_next_mode()
+    total_agent_posts = agent_mem.get("total_posts_created", 0)
 
     alert_html = ""
     if msg == "draft_created":
         alert_html = f'<div class="alert alert-success">✨ নতুন ড্রাফট যোগ হয়েছে! বর্তমানে মোট {drafts_count}টি ড্রাফট সংরক্ষিত আছে।</div>'
+    elif msg == "agent_success":
+        alert_html = f'<div class="alert alert-success">🤖 অটোনোমাস এআই এজেন্ট সফলভাবে কন্টেন্ট প্রস্তুত করে ড্রাফটে যুক্ত করেছে! বর্তমানে মোট {drafts_count}টি ড্রাফট কিউ-তে রয়েছে।</div>'
     elif msg == "draft_updated":
         alert_html = '<div class="alert alert-success">💾 ড্রাফটের ছবি/ভিডিও/ক্যাপশন সফলভাবে সেভ করা হয়েছে!</div>'
     elif msg == "image_regenerated":
-        alert_html = '<div class="alert alert-success">🔄 নতুন এআই ছবি সফলভাবে তৈরি ও যুক্ত করা হয়েছে!</div>'
+        alert_html = '<div class="alert alert-success">🔄 নতুন বিমূর্ত এআই ছবি সফলভাবে তৈরি ও যুক্ত করা হয়েছে!</div>'
     elif msg == "published":
         alert_html = '<div class="alert alert-success">🎉 পোস্টটি সফলভাবে আপনার ফেসবুক পেজে লাইভ হয়েছে!</div>'
     elif msg == "deleted":
         alert_html = '<div class="alert alert-info">🗑️ ড্রাফটটি সফলভাবে মুছে ফেলা হয়েছে।</div>'
-    elif msg == "sheet_imported":
-        alert_html = '<div class="alert alert-success">📊 শিট/CSV ফাইল সফলভাবে সংরক্ষিত হয়েছে এবং কনটেন্ট ড্রাফট করা হয়েছে! প্রতিদিন সকাল ৯:০০ টা ও রাত ৮:০০ টায় স্বয়ংক্রিয়ভাবে এখান থেকে পোস্ট ড্রাফট হবে।</div>'
     elif error:
         alert_html = f'<div class="alert alert-error">❌ এরর: {html.escape(error)}</div>'
 
@@ -458,6 +457,54 @@ async def home(msg: Optional[str] = None, error: Optional[str] = None):
 
             {alert_html}
 
+            <!-- Action 0: Autonomous AI News & Tips Agent -->
+            <div class="card" style="border-left: 4px solid #8b5cf6; background: linear-gradient(135deg, #1e1b4b 0%, #0f172a 100%);">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.6rem;">
+                    <div style="display: flex; align-items: center; gap: 0.6rem;">
+                        <h3 style="margin: 0; color: #a78bfa; font-size: 1.2rem;">🤖 NewGo Autonomous AI Content Agent</h3>
+                        <span style="background: #059669; color: #d1fae5; padding: 0.15rem 0.55rem; border-radius: 12px; font-size: 0.75rem; font-weight: bold;">🟢 সার্বক্ষণিক সক্রিয়</span>
+                    </div>
+                    <span style="font-size: 0.85rem; color: #cbd5e1;">সর্বমোট স্বয়ংক্রিয় পোস্ট: <strong style="color: #38bdf8;">{total_agent_posts}টি</strong></span>
+                </div>
+                
+                <p style="color: #94a3b8; font-size: 0.88rem; margin-top: 0; margin-bottom: 0.8rem; line-height: 1.5;">
+                    শীর্ষ টেক ওয়েবসাইটগুলো (<em>The Verge, TechCrunch, VentureBeat</em>) সার্বক্ষণিক ট্র্যাক করে এবং প্রতিদিনের শিডিউলে (সকাল ৯টা ও রাত ৮টা) একবার <strong>"🔥 শীর্ষ AI নিউজ"</strong> এবং পরের বার <strong>"💡 দরকারি AI টিপস অ্যান্ড ট্রিকস"</strong> শাফল করে স্বয়ংক্রিয় ফেসবুক পোস্ট তৈরি করে।
+                </p>
+                <div style="margin-bottom: 0.8rem; display: flex; align-items: center; gap: 0.5rem; font-size: 0.82rem; color: #38bdf8; background: #0284c718; padding: 0.35rem 0.75rem; border-radius: 6px; border: 1px solid #0284c740;">
+                    <span>🛡️ <strong>কঠোর ইমেজ নীতি:</strong> কোনো মানুষ, মুখমণ্ডল বা নারী প্রতিকৃতি ছাড়া শুধুমাত্র পিউর বিমূর্ত প্রযুক্তি ও সার্কিট ইমেজ তৈরি হয়।</span>
+                </div>
+
+                <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.8rem; background: rgba(15, 23, 42, 0.6); padding: 0.75rem 1rem; border-radius: 8px; border: 1px solid rgba(139, 92, 246, 0.3);">
+                    <div>
+                        <span style="font-size: 0.85rem; color: #cbd5e1;">পরবর্তী স্বয়ংক্রিয় পোস্টের ধরন:</span>
+                        <span style="font-size: 0.9rem; font-weight: bold; color: {'#f59e0b' if next_agent_mode == 'news' else '#10b981'}; margin-left: 0.4rem;">
+                            {'📰 শীর্ষ AI ব্রেকিং নিউজ (Top AI News)' if next_agent_mode == 'news' else '💡 দরকারি AI টিপস অ্যান্ড ট্রিকস (AI Tips & Tricks)'}
+                        </span>
+                    </div>
+
+                    <div style="display: flex; gap: 0.6rem; flex-wrap: wrap;">
+                        <form action="/agent/run" method="post" style="margin: 0;">
+                            <input type="hidden" name="mode" value="auto" />
+                            <button type="submit" class="btn btn-primary" style="background: #7c3aed; padding: 0.5rem 1rem; font-size: 0.88rem;">
+                                ⚡ এখনই এজেন্ট রান করুন (Auto Shuffle)
+                            </button>
+                        </form>
+                        <form action="/agent/run" method="post" style="margin: 0;">
+                            <input type="hidden" name="mode" value="news" />
+                            <button type="submit" class="btn" style="background: #0284c7; color: white; padding: 0.5rem 0.85rem; font-size: 0.85rem;">
+                                📰 শুধু নিউজ
+                            </button>
+                        </form>
+                        <form action="/agent/run" method="post" style="margin: 0;">
+                            <input type="hidden" name="mode" value="tips" />
+                            <button type="submit" class="btn" style="background: #059669; color: white; padding: 0.5rem 0.85rem; font-size: 0.85rem;">
+                                💡 শুধু টিপস
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
             <!-- Action 1: Add AI Draft One by One -->
             <div class="card" style="border-left: 4px solid #38bdf8;">
                 <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.6rem;">
@@ -514,35 +561,7 @@ async def home(msg: Optional[str] = None, error: Optional[str] = None):
                 </form>
             </div>
 
-            <!-- Action 3: Google Sheets Sync (Collapsible) -->
-            <details class="card" style="cursor: pointer;" {"open" if (active_sheet_url or has_active_csv) else ""}>
-                <summary style="font-weight: bold; color: #cbd5e1; font-size: 1rem;">📊 গুগল শিট বা CSV ফাইল থেকে কন্টেন্ট অটো-শিডিউল ও ড্রাফট তৈরি</summary>
-                <div style="margin-top: 1rem;">
-                    <p class="helper-text" style="color: #cbd5e1; font-size: 0.9rem;">আপনার গুগল শিটের শেয়ারেবল লিংক দিন অথবা সরাসরি CSV ফাইল আপলোড করুন (কলাম: <code>Topic</code>, <code>Caption</code>, <code>Media_Type</code>, <code>Media_URL</code>):</p>
-                    <form action="/drafts/import-sheet" method="post" enctype="multipart/form-data" style="display: flex; flex-direction: column; gap: 0.8rem;">
-                        <div style="display: flex; gap: 0.8rem; flex-wrap: wrap;">
-                            <input type="text" name="sheet_url" class="input-text" style="flex: 1; min-width: 280px;" value="{html.escape(active_sheet_url)}" placeholder="গুগল শিট লিংক দিন (যেমন: https://docs.google.com/spreadsheets/d/...)" />
-                            <button type="submit" class="btn btn-primary" style="background: #0f766e;">📥 শিট সেভ ও ড্রাফট তৈরি করুন</button>
-                        </div>
-                        <div style="display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap; margin-top: 0.2rem;">
-                            <span style="color: #64748b; font-size: 0.85rem;">— অথবা —</span>
-                            <label style="cursor: pointer; background: #1e293b; border: 1px dashed #38bdf8; padding: 0.45rem 0.9rem; border-radius: 6px; font-size: 0.85rem; color: #38bdf8; display: inline-flex; align-items: center; gap: 0.4rem;">
-                                📁 সরাসরি কম্পিউটার/ফোন থেকে CSV ফাইল আপলোড করুন
-                                <input type="file" name="sheet_file" accept=".csv" style="display: none;" onchange="this.form.submit()" />
-                            </label>
-                            {f'<span style="font-size: 0.85rem; color: #34d399;">✓ অ্যাক্টিভ CSV ফাইল সংযুক্ত আছে</span>' if has_active_csv else ''}
-                        </div>
-                    </form>
-                    <div style="margin-top: 0.85rem; background: #0f172a; padding: 0.85rem; border-radius: 8px; border: 1px solid var(--border); font-size: 0.85rem; line-height: 1.6; color: #94a3b8;">
-                        💡 <strong style="color: #38bdf8;">গুগল শিট লিঙ্ক দেওয়ার নিয়ম (Error 404 সমাধান):</strong><br>
-                        ১. আপনার গুগল শিটের ওপরের ডান কোনায় <strong>Share</strong> বাটনে ক্লিক করুন।<br>
-                        ২. <strong>General access</strong> অপশনে <em>"Restricted"</em> এর বদলে <strong>"Anyone with the link"</strong> (Viewer/দর্শক) সিলেক্ট করুন।<br>
-                        ৩. তারপর <strong>Copy link</strong> করে উপরের বক্সে পেস্ট করুন।<br>
-                        📁 <strong style="color: #facc15;">বিকল্প সহজ উপায়:</strong> গুগল শিট শেয়ারিং জটিল মনে হলে শিটটি ডাউনলোড করে (File ➔ Download ➔ Comma Separated Values .csv) সরাসরি <strong>"সরাসরি CSV ফাইল আপলোড করুন"</strong> বাটনে আপলোড করে দিন!<br>
-                        ⏰ <strong style="color: #34d399;">দৈনিক অটোমেটিক শিডিউল:</strong> শিট লিংক বা CSV ফাইল একবার যুক্ত থাকলে প্রতিদিন <strong>সকাল ৯:০০ টা</strong> এবং <strong>রাত ৮:০০ টায়</strong> স্বয়ংক্রিয়ভাবে শিটের পরবর্তী রো থেকে ১টি করে পোস্ট ড্রাফট হিসেবে আপনার ড্যাশবোর্ডে জমা হবে!
-                    </div>
-                </div>
-            </details>
+
 
             <!-- Pending Approval Section -->
             <div class="section-title">
@@ -710,6 +729,11 @@ async def health():
             f"{config.SCHEDULE_EVENING_HOUR:02d}:{config.SCHEDULE_EVENING_MINUTE:02d} BST (Night)",
         ],
         "active_google_sheet": bool(get_active_sheet_url()),
+        "autonomous_agent": {
+            "status": "active",
+            "next_mode": get_next_mode(),
+            "total_posts": get_agent_memory().get("total_posts_created", 0),
+        },
     }
 
 
@@ -777,6 +801,27 @@ async def terms_of_service():
     </body>
     </html>
     """)
+
+
+# ==============================================================================
+# 0. Autonomous AI Content Agent (Manual Trigger & Auto Shuffle)
+# ==============================================================================
+@app.post("/agent/run")
+async def trigger_autonomous_agent(mode: str = Form("auto")):
+    """
+    Manually triggers the Autonomous AI News & Tips Agent.
+    Supports auto-shuffle or forced 'news' / 'tips' mode.
+    """
+    forced_mode = None if mode == "auto" else mode.lower().strip()
+    try:
+        result = run_autonomous_content_agent(forced_mode=forced_mode)
+        if result.get("success"):
+            return RedirectResponse(url="/?msg=agent_success", status_code=303)
+        else:
+            return RedirectResponse(url="/?error=এজেন্ট পোস্ট তৈরি করতে ব্যর্থ হয়েছে", status_code=303)
+    except Exception as e:
+        logger.error(f"Error running autonomous agent endpoint: {e}")
+        return RedirectResponse(url=f"/?error={str(e)}", status_code=303)
 
 
 # ==============================================================================
