@@ -17,7 +17,7 @@ services:
       - key: GEMINI_API_KEY
         sync: false
       - key: GEMINI_MODEL
-        value: gemini-2.5-flash
+        value: gemini-3.5-flash
       - key: DEFAULT_POST_TOPIC
         value: AI Tools & Technologies, Smart Tips & Useful Tricks, AI & Work Automation, Learning Resources, Productivity & Digital Skills, and New Ideas for the Future
       - key: POST_SCHEDULE_HOUR

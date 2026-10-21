@@ -45,21 +45,7 @@ except ImportError:
 
 from services.gemini_service import generate_chat_reply, generate_page_post
 
-try:
-    from services.google_sheets_service import (
-        get_active_sheet_url,
-        import_drafts_from_csv_file,
-        import_drafts_from_google_sheet,
-    )
-except ImportError:
-    from services.google_sheets_service import (
-        get_active_sheet_url,
-        import_drafts_from_google_sheet,
-    )
-    def import_drafts_from_csv_file(*args, **kwargs):
-        return 0, [], "CSV processing module pending update"
-
-from services.image_service import get_free_image_url
+from services.image_service import get_free_image_url, fetch_and_save_image_locally
 from services.news_agent_service import (
     get_agent_memory,
     get_next_mode,
@@ -102,10 +88,12 @@ async def scheduled_daily_post():
 
         # 2. Standard Gemini AI Fallback
         caption, keyword, visual_prompt = generate_page_post(config.DEFAULT_POST_TOPIC)
-        image_url = get_free_image_url(keyword, visual_prompt)
+        raw_image_url = get_free_image_url(search_keyword=keyword, visual_prompt=visual_prompt, caption=caption)
+        local_path, web_url = fetch_and_save_image_locally(raw_image_url, filename_prefix="sched")
         draft = add_draft(
             caption=caption,
-            image_url=image_url,
+            image_url=web_url or raw_image_url,
+            local_file_path=local_path,
             topic=config.DEFAULT_POST_TOPIC,
             keyword=keyword,
             media_type="photo",
@@ -164,7 +152,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="NewGo Learn Auto - Facebook AI Approval Dashboard",
-    description="One-Click Post Approval Dashboard, Direct Device Uploads, Google Sheets Sync, and AI Messenger Bot.",
+    description="One-Click Post Approval Dashboard, Direct Device Uploads, and AI Messenger Bot.",
     version="3.0.0",
     lifespan=lifespan,
 )
@@ -728,7 +716,6 @@ async def health():
             f"{config.SCHEDULE_MORNING_HOUR:02d}:{config.SCHEDULE_MORNING_MINUTE:02d} BST (Morning)",
             f"{config.SCHEDULE_EVENING_HOUR:02d}:{config.SCHEDULE_EVENING_MINUTE:02d} BST (Night)",
         ],
-        "active_google_sheet": bool(get_active_sheet_url()),
         "autonomous_agent": {
             "status": "active",
             "next_mode": get_next_mode(),
@@ -835,10 +822,12 @@ async def generate_single_draft(topic: str = Form("")):
 
     try:
         caption, keyword, visual_prompt = generate_page_post(target_topic)
-        image_url = get_free_image_url(keyword, visual_prompt)
+        raw_image_url = get_free_image_url(keyword, visual_prompt, caption=caption)
+        local_path, web_url = fetch_and_save_image_locally(raw_image_url, filename_prefix="draft")
         add_draft(
             caption=caption,
-            image_url=image_url,
+            image_url=web_url or raw_image_url,
+            local_file_path=local_path,
             topic=target_topic,
             keyword=keyword,
             media_type="photo",
@@ -887,6 +876,14 @@ async def create_custom_draft(
     img_url = saved_web_url if m_type == "photo" else ""
     vid_url = saved_web_url if m_type == "video" else ""
 
+    # If photo type selected without manual file upload, generate caption-matched AI image using Gemini
+    if m_type == "photo" and not img_url:
+        raw_url = get_free_image_url(caption=caption.strip())
+        local_path, web_url = fetch_and_save_image_locally(raw_url, filename_prefix="custom")
+        img_url = web_url or raw_url
+        if not saved_local_path:
+            saved_local_path = local_path
+
     add_draft(
         caption=caption.strip(),
         image_url=img_url,
@@ -897,45 +894,6 @@ async def create_custom_draft(
     )
     return RedirectResponse(url="/?msg=draft_created", status_code=303)
 
-
-@app.post("/drafts/import-sheet")
-async def import_from_sheet(
-    sheet_url: str = Form(""),
-    sheet_file: Optional[UploadFile] = File(None),
-):
-    """Imports content from Google Sheet URL or direct CSV file upload, and creates drafts."""
-    # 1. If a direct CSV file was uploaded from device
-    if sheet_file and sheet_file.filename:
-        safe_filename = sheet_file.filename.lower()
-        if not safe_filename.endswith(".csv"):
-            return RedirectResponse(url="/?error=শুধুমাত্র .csv ফরম্যাটের ফাইল আপলোড করুন", status_code=303)
-        temp_dest = config.BASE_DIR / "active_content_sheet.csv"
-        try:
-            with open(temp_dest, "wb") as buffer:
-                shutil.copyfileobj(sheet_file.file, buffer)
-            count, _, err_msg = import_drafts_from_csv_file(temp_dest, max_count=5)
-            if count > 0:
-                return RedirectResponse(url="/?msg=sheet_imported", status_code=303)
-            else:
-                return RedirectResponse(url=f"/?error={err_msg}", status_code=303)
-        except Exception as e:
-            logger.error(f"CSV file processing error: {e}")
-            return RedirectResponse(url=f"/?error=CSV ফাইল প্রসেস করতে ব্যর্থ: {str(e)}", status_code=303)
-
-    # 2. Otherwise use the Google Sheet URL
-    target_url = sheet_url.strip() or get_active_sheet_url()
-    if not target_url:
-        return RedirectResponse(url="/?error=গুগল শিট লিংক দিন অথবা একটি CSV ফাইল আপলোড করুন", status_code=303)
-
-    try:
-        count, _, err_msg = import_drafts_from_google_sheet(target_url, max_count=5)
-        if count > 0:
-            return RedirectResponse(url="/?msg=sheet_imported", status_code=303)
-        else:
-            return RedirectResponse(url=f"/?error={err_msg}", status_code=303)
-    except Exception as e:
-        logger.error(f"Google Sheet import error: {e}")
-        return RedirectResponse(url=f"/?error={str(e)}", status_code=303)
 
 
 @app.post("/drafts/{draft_id}/approve")
@@ -1084,16 +1042,22 @@ async def regenerate_image_for_draft(draft_id: str):
         raise HTTPException(status_code=404, detail="Draft not found")
 
     keyword = draft.get("keyword") or draft.get("topic") or config.DEFAULT_POST_TOPIC
-    new_img_url = get_free_image_url(keyword, seed=random.randint(100, 999999))
+    caption = draft.get("caption", "")
+    raw_img_url = get_free_image_url(
+        search_keyword=keyword,
+        seed=random.randint(100, 999999),
+        caption=caption,
+    )
+    local_path, web_url = fetch_and_save_image_locally(raw_img_url, filename_prefix="regen")
 
     update_draft(
         draft_id=draft_id,
-        image_url=new_img_url,
+        image_url=web_url or raw_img_url,
         video_url="",
-        local_file_path="",
+        local_file_path=local_path,
         media_type="photo",
     )
-    logger.info(f"Regenerated AI image for draft {draft_id}: {new_img_url}")
+    logger.info(f"Regenerated and cached AI image for draft {draft_id}: {web_url or raw_img_url}")
     return RedirectResponse(url="/?msg=image_regenerated", status_code=303)
 
 

@@ -1,10 +1,21 @@
 import os
 from pathlib import Path
-from dotenv import load_dotenv
 
-# Load .env file from project root
 BASE_DIR = Path(__file__).resolve().parent
-load_dotenv(BASE_DIR / ".env")
+try:
+    from dotenv import load_dotenv
+    load_dotenv(BASE_DIR / ".env")
+except ImportError:
+    env_file = BASE_DIR / ".env"
+    if env_file.exists():
+        with open(env_file, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, v = line.split("=", 1)
+                    k, v = k.strip(), v.strip()
+                    if k and k not in os.environ:
+                        os.environ[k] = v
 
 # Timezone Configuration (Bangladesh Standard Time: GMT+6)
 APP_TIMEZONE = os.getenv("APP_TIMEZONE", "Asia/Dhaka").strip()
@@ -17,7 +28,7 @@ FB_GRAPH_API_VERSION = os.getenv("FB_GRAPH_API_VERSION", "v21.0").strip()
 
 # Gemini AI Configuration
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-flash-lite-latest").strip()
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash").strip()
 
 # Auto-Posting Configuration (AI, Automation, Productivity & Digital Skills)
 DEFAULT_POST_TOPIC = os.getenv(
@@ -30,9 +41,6 @@ SCHEDULE_MORNING_HOUR = int(os.getenv("SCHEDULE_MORNING_HOUR", "9"))
 SCHEDULE_MORNING_MINUTE = int(os.getenv("SCHEDULE_MORNING_MINUTE", "0"))
 SCHEDULE_EVENING_HOUR = int(os.getenv("SCHEDULE_EVENING_HOUR", "20"))
 SCHEDULE_EVENING_MINUTE = int(os.getenv("SCHEDULE_EVENING_MINUTE", "0"))
-
-# Google Sheets Content Queue (CSV export URL or Google Sheet link)
-GOOGLE_SHEET_CSV_URL = os.getenv("GOOGLE_SHEET_CSV_URL", "").strip()
 
 # Image Service Provider (pollinations / unsplash / pexels)
 IMAGE_PROVIDER = os.getenv("IMAGE_PROVIDER", "pollinations").strip().lower()

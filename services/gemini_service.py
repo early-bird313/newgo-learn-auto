@@ -1,8 +1,12 @@
 import json
 import logging
-from typing import Dict, List, Tuple
-from google import genai
-from google.genai import types
+from typing import Any, Dict, List, Optional, Tuple
+try:
+    from google import genai
+    from google.genai import types
+except ImportError:
+    genai = None
+    types = None
 import config
 
 logger = logging.getLogger(__name__)
@@ -12,8 +16,10 @@ _conversation_history: Dict[str, List[Dict[str, str]]] = {}
 MAX_HISTORY_PER_USER = 6
 
 
-def get_gemini_client() -> genai.Client | None:
+def get_gemini_client() -> Any:
     """Returns an initialized Gemini Client if API key is present."""
+    if not genai:
+        return None
     if not config.GEMINI_API_KEY or config.GEMINI_API_KEY == "your_gemini_api_key_here":
         logger.warning("GEMINI_API_KEY is not configured.")
         return None
@@ -74,7 +80,7 @@ def generate_chat_reply(sender_id: str, user_message: str) -> str:
 
     # List of candidate models to try in order
     candidate_models = []
-    for m in [config.GEMINI_MODEL, "gemini-flash-lite-latest", "gemini-flash-latest", "gemini-3.5-flash-lite", "gemini-3.6-flash"]:
+    for m in ["gemini-3.5-flash", "gemini-3.5-flash-lite", config.GEMINI_MODEL, "gemini-3.8-flash"]:
         if m and m not in candidate_models:
             candidate_models.append(m)
 
@@ -125,25 +131,35 @@ def generate_page_post(topic_hint: str = "") -> Tuple[str, str, str]:
         return caption, "abstract futuristic ai technology circuit", "A glowing abstract futuristic AI neural network circuit board, digital data stream, no humans, cinematic 8k"
 
     prompt = f"""
-তুমি একজন দক্ষ ফেসবুক কনটেন্ট ক্রিয়েটর।
-নিচের বিষয়ের ওপর ভিত্তি করে একটি অত্যন্ত আকর্ষণীয়, শিক্ষণীয় ও এনগেজিং ফেসবুক পোস্ট তৈরি করো:
+তুমি একজন দক্ষ সোশ্যাল মিডিয়া কনটেন্ট ক্রিয়েটর।
+নিচের বিষয়ের ওপর ভিত্তি করে ফেসবুক পেজের জন্য শুধুমাত্র বাংলায় একটি অত্যন্ত আকর্ষণীয়, সংক্ষিপ্ত ও টু-দ্য-পয়েন্ট (To-The-Point) পোস্ট তৈরি করো:
 বিষয়: "{topic}"
 
-⚠️ কঠোর ছবি নির্দেশিকা (STRICT IMAGE RULES - NO HUMANS / NO FEMALES):
+কঠোর ক্যাপশন নির্দেশিকা (STRICT RULES):
+১. শুধুমাত্র খাঁটি বাংলা (Sudhu Bangla): সম্পূর্ণ ক্যাপশনটি সাবলীল ও সহজবোধ্য বাংলায় হতে হবে। অপ্রয়োজনীয় ইংরেজি বাক্য ব্যবহার করা যাবে না।
+২. টু-দ্য-পয়েন্ট ও সংক্ষিপ্ত (To-The-Point): অহেতুক ভূমিকা বা বাড়তি বাক্য ছাড়া সরাসরি মূল তথ্য ও টিপস তুলে ধরতে হবে।
+৩. ফরম্যাট:
+   - নজরকাড়া একটি বাংলা হেডলাইন (উপযুক্ত ইমোজি সহ যেমন 🚀, 💡, ⚡)।
+   - মূল বিষয়টি সংক্ষেপে ১-২টি বাক্যে উপস্থাপন।
+   - ২-৩টি বুলেট পয়েন্টে (👉 দিয়ে) সরাসরি মূল বিষয়গুলো।
+   - শেষে প্রাসঙ্গিক ৩টি হ্যাশট্যাগ (#AITools #Automation #Productivity ইত্যাদি)।
+
+⚠️ কঠোর ছবি নির্দেশিকা (STRICT IMAGE RULES - ABSOLUTELY NO HUMANS / NO FEMALES):
 - ছবিতে কোনো মানুষ, নারী, পুরুষ, অবয়ব, মুখমণ্ডল, হাত বা প্রতিকৃতি থাকবে না (Strictly NO humans, NO women, NO female figures, NO men, NO persons, NO faces, NO portraits, NO human hands)।
-- ছবির প্রম্পট (visual_prompt) হতে হবে শুধুমাত্র বিমূর্ত প্রযুক্তি: যেমন glowing AI neural circuits, futuristic cybernetic hardware, data visualization, minimalist futuristic technology, no humans।
+- ছবির প্রম্পট (visual_prompt) হতে হবে ক্যাপশনের বিষয়ের সাথে হুবহু সামঞ্জস্যপূর্ণ শুধুমাত্র বিমূর্ত প্রযুক্তি: যেমন glowing AI neural circuits, futuristic cybernetic hardware, data visualization, minimalist futuristic technology, no humans, cinematic 8k।
+- keyword হবে টেকনিক্যাল ইংরেজি শব্দ (যেমন: 'abstract ai circuit board technology', 'futuristic data server')।
 
 আউটপুটটি অবশ্যই সম্পূর্ণ ভ্যালিড JSON ফরম্যাটে হতে হবে (অন্য কোনো অতিরিক্ত টেক্সট বা মার্কডাউন ছাড়া)।
 JSON স্কিমা:
 {{
-  "caption": "সম্পূর্ণ ফেসবুক পোস্টের ক্যাপশন। শুরুতে সালাম, মাঝে আকর্ষণীয় মূল বার্তা ও উপদেশ, এবং শেষে ৩-৫টি ট্রেন্ডিং হ্যাশট্যাগ (যেমন #AITools #Automation #Productivity ইত্যাদি)। ইমোজি ব্যবহার করবে।",
-  "image_keyword": "ছবি সার্চ করার জন্য ২-৪ শব্দের ইংরেজি কিওয়ার্ড (যেমন: 'abstract ai circuit board technology', 'futuristic data server')",
-  "visual_prompt": "ছবি জেনারেট করার জন্য বিস্তারিত ইংরেজি প্রম্পট (যেমন: 'A modern glowing abstract cybernetic circuit board, neon data streams, minimalist tech hardware, no humans, cinematic lighting, 8k')"
+  "caption": "সম্পূর্ণ বাংলা টু-দ্য-পয়েন্ট পোস্টের ক্যাপশন...",
+  "image_keyword": "ছবি সার্চ করার জন্য ২-৪ শব্দের ইংরেজি কিওয়ার্ড (যেমন: 'abstract ai circuit board technology')",
+  "visual_prompt": "ক্যাপশনের সাথে সামঞ্জস্যপূর্ণ বিস্তারিত ইংরেজি প্রম্পট (যেমন: 'A modern glowing abstract cybernetic circuit board, neon data streams, minimalist tech hardware, no humans, cinematic lighting, 8k')"
 }}
 """
 
     candidate_models = []
-    for m in [config.GEMINI_MODEL, "gemini-flash-lite-latest", "gemini-flash-latest", "gemini-3.5-flash-lite", "gemini-3.6-flash"]:
+    for m in ["gemini-3.5-flash", "gemini-3.5-flash-lite", config.GEMINI_MODEL, "gemini-3.8-flash"]:
         if m and m not in candidate_models:
             candidate_models.append(m)
 

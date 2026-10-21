@@ -1,4 +1,5 @@
 import hashlib
+import html
 import json
 import logging
 import random
@@ -10,8 +11,11 @@ import requests
 import config
 from services.draft_store import add_draft
 from services.gemini_service import get_gemini_client
-from services.image_service import get_free_image_url
-from google.genai import types
+from services.image_service import get_free_image_url, fetch_and_save_image_locally
+try:
+    from google.genai import types
+except ImportError:
+    types = None
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +105,7 @@ def clean_html(text: str) -> str:
     if not text:
         return ""
     clean = re.sub(r"<[^>]+>", " ", text)
+    clean = html.unescape(clean)
     clean = re.sub(r"\s+", " ", clean)
     return clean.strip()
 
@@ -235,28 +240,30 @@ def generate_ai_news_post(article: Dict[str, str]) -> Tuple[str, str, str]:
     source = article.get("source", "Tech News")
 
     system_instruction = """
-আপনি 'NewGo Learn' টেক ও এআই ফেসবুক পেজের একজন দক্ষ ও জনপ্রিয় টেক জার্নালিস্ট এবং সোশ্যাল মিডিয়া কন্টেন্ট ক্রিয়েটর।
-আপনার কাজ হলো আন্তর্জাতিক শীর্ষ এআই ও প্রযুক্তি সংবাদকে সাধারণ ফেসবুক পাঠকদের জন্য অত্যন্ত আকর্ষণীয়, প্রাঞ্জল ও সহজে বোধগম্য বাংলায় একটি ভাইরাল পোস্ট তৈরি করা।
+আপনি 'NewGo Learn' টেক ও এআই ফেসবুক পেজের একজন দক্ষ সোশ্যাল মিডিয়া কনটেন্ট ক্রিয়েটর।
+আপনার কাজ হলো আন্তর্জাতিক শীর্ষ এআই সংবাদ নিয়ে ফেসবুকের জন্য শুধুমাত্র বাংলায় একটি অত্যন্ত আকর্ষণীয়, সংক্ষিপ্ত ও টু-দ্য-পয়েন্ট (To-The-Point) পোস্ট তৈরি করা।
 
-পোস্টের ফরম্যাট অবশ্যই নিচের মতো হতে হবে:
-১. আকর্ষণীয় ও নজরকাড়া বাংলা হেডলাইন (উপযুক্ত ইমোজি সহ যেমন 🔥, 🚨, 🌐)
-২. মূল খবরটির সহজ ও আকর্ষণীয় বিবরণ (১-২ প্যারাগ্রাফে সাধারণ মানুষের বোধগম্য ভাষায়)
-৩. ৩-৪টি বুলেট পয়েন্টে মূল হাইলাইটস ও গুরুত্বপূর্ণ তথ্য (👉 বা • দিয়ে)
-৪. এই খবরটি থেকে সাধারণ মানুষ বা তরুণদের জন্য কী শেখার বা সতর্ক হওয়ার আছে
-৫. পাঠকদের সাথে এনগেজমেন্ট বাড়ানোর জন্য ১টি প্রশ্ন (যেমন: "এ বিষয়ে আপনার মতামত কি? কমেন্টে জানান!")
-৬. খবরের সোর্স ক্রেডিট (যেমন: সূত্র: TechCrunch / The Verge)
-৭. প্রাসঙ্গিক ৪-৫টি ট্রেন্ডিং হ্যাশট্যাগ (#AINews #NewGoLearn #TechUpdates #ArtificialIntelligence)
+কঠোর নিয়মাবলী:
+১. শুধুমাত্র খাঁটি ও প্রমিত বাংলা (Sudhu Bangla): সম্পূর্ণ পোস্টটি বাংলায় হতে হবে। অপ্রয়োজনীয় ইংরেজি বাক্য বা জটিল মিশ্রণ পরিহার করুন।
+২. টু-দ্য-পয়েন্ট ও সংক্ষিপ্ত (To-The-Point): পোস্টটির মোট দৈর্ঘ্য ৮০ থেকে ১০০ শব্দের মধ্যে সীমাবদ্ধ হতে হবে। অহেতুক লম্বা বা অপ্রয়োজনীয় ভূমিকা সম্পূর্ণ নিষিদ্ধ।
+৩. ক্লিকবেইট ও নাটকীয়তা সম্পূর্ণ নিষিদ্ধ: কোনো অহেতুক ভীতিপ্রদর্শনকারী বা নাটকীয় প্রশ্ন (যেমন: "মানুষের জীবন কেড়ে নিতে পারে কি?", "চরম বিতর্ক", "ভয়াবহ আশঙ্কা") করা সম্পূর্ণ নিষিদ্ধ। খবরটি হবে সম্পূর্ণ তথ্যবহুল, বাস্তবসম্মত ও পেশাদার।
+৪. ফরম্যাট:
+   - নজরকাড়া সংক্ষিপ্ত বাংলা হেডলাইন (১টি উপযুক্ত ইমোজি সহ যেমন ⚡, 🌐, 🚀)।
+   - মূল খবরটি সংক্ষেপে ১-২টি বাক্যে সরাসরি তুলে ধরুন।
+   - ৩টি সংক্ষিপ্ত বুলেট পয়েন্টে (👉 দিয়ে) মূল তথ্য/হাইলাইটস।
+   - ১টি সংক্ষিপ্ত ইতিবাচক শিক্ষণীয় বা সতর্কতামূলক কথা।
+   - শেষে প্রাসঙ্গিক ৩-৪টি হ্যাশট্যাগ (#AINews #NewGoLearn #Technology #ArtificialIntelligence)।
 
 ⚠️ কঠোর ছবি নির্দেশিকা (STRICT IMAGE RULES - ABSOLUTELY NO HUMANS / NO FEMALES):
 - ছবিতে কোনো মানুষ, নারী, পুরুষ, মুখমণ্ডল, হাত বা মানব অবয়ব থাকা সম্পূর্ণ নিষেধ (Strictly NO humans, NO women, NO female figures, NO men, NO persons, NO faces, NO portraits, NO human hands)।
-- ছবির প্রম্পট (visual_prompt) হতে হবে শুধুমাত্র বিমূর্ত প্রযুক্তি ও আধুনিক ইলেকট্রনিক্স: যেমন glowing AI neural network, futuristic circuit board, cybernetic microchip, server rack hardware, abstract 3D data visualization, glowing code on sleek futuristic monitors।
-- keyword হবে কেবল টেকনিক্যাল শব্দ (যেমন: "abstract ai neural circuit", "futuristic server hardware", "microchip technology")।
+- ছবির প্রম্পট (visual_prompt) হতে হবে ক্যাপশনের বিষয়ের সাথে হুবহু সামঞ্জস্যপূর্ণ শুধুমাত্র বিমূর্ত প্রযুক্তি ও আধুনিক ইলেকট্রনিক্স: যেমন glowing AI neural network, futuristic circuit board, cybernetic microchip, server rack hardware, abstract 3D data visualization, glowing futuristic tech concepts (no humans, 8k render)।
+- keyword হবে কেবল টেকনিক্যাল ইংরেজি শব্দ (যেমন: "abstract ai neural circuit", "futuristic server hardware")।
 
 আউটপুটটি অবশ্যই কঠোরভাবে এই JSON ফরম্যাটে দিতে হবে:
 {
-  "caption": "সম্পূর্ণ ফেসবুক পোস্টটি এখানে থাকবে...",
+  "caption": "সম্পূর্ণ বাংলা টু-দ্য-পয়েন্ট পোস্টটি এখানে থাকবে...",
   "keyword": "ছবির জন্য ২-৩ শব্দের ইংরেজি কি-ওয়ার্ড (যেমন: abstract ai neural circuit)",
-  "visual_prompt": "ছবি তৈরির জন্য বিস্তারিত ইংরেজি প্রম্পট (যেমন: A futuristic glowing AI neural circuit board with luminous blue and gold data streams, abstract cybernetic technology, no humans, cinematic 8k)"
+  "visual_prompt": "ক্যাপশনের সাথে সামঞ্জস্যপূর্ণ ইংরেজি ভিজ্যুয়াল প্রম্পট (A futuristic glowing AI neural circuit board with luminous blue data streams, abstract cybernetic technology, strictly no humans, cinematic 8k)"
 }
 """
 
@@ -265,28 +272,28 @@ def generate_ai_news_post(article: Dict[str, str]) -> Tuple[str, str, str]:
 খবরের উৎস: {source}
 খবরের সংক্ষিপ্ত বিবরণ: {summary}
 
-অনুগ্রহ করে উপরের এআই খবরটি নিয়ে 'NewGo Learn' পেজের জন্য একটি তথ্যবহুল ও আকর্ষণীয় বাংলা ফেসবুক পোস্ট তৈরি করুন।
+অনুগ্রহ করে উপরের এআই খবরটি নিয়ে 'NewGo Learn' পেজের জন্য শুধুমাত্র বাংলায় একটি তথ্যবহুল, সংক্ষিপ্ত ও টু-দ্য-পয়েন্ট বাংলা ফেসবুক পোস্ট তৈরি করুন।
 """
 
-    fallback_caption = f"""🔥 ব্রেকিং এআই আপডেট: {title}
+    fallback_caption = f"""⚡ এআই প্রযুক্তি সংবাদ: {title}
 
-আন্তর্জাতিক প্রযুক্তি বিশ্বে সম্প্রতি এআই নিয়ে বড় একটি পরিবর্তন এসেছে। {summary[:250]}...
+আন্তর্জাতিক প্রযুক্তি বিশ্বে সম্প্রতি এআই নিয়ে গুরুত্বপূর্ণ অগ্রগতি ঘটেছে। {summary[:120]}...
 
-📌 মূল বিষয়গুলো:
-👉 নতুন প্রযুক্তির দ্রুত অগ্রগতি ও বিশ্বব্যাপী প্রভাব
-👉 সাধারণ ব্যবহারকারী ও প্রফেশনালদের কাজের গতি বাড়ানোর সুযোগ
-👉 ভবিষ্যতের কৃত্রিম বুদ্ধিমত্তার নতুন দিগন্ত
+👉 প্রযুক্তির কার্যকারিতা ও নিরাপদ ব্যবহারের নতুন পদক্ষেপ।
+👉 ব্যবহারকারীদের কাজের গতি বৃদ্ধি ও ডিজিটাল রূপান্তর।
+👉 বিশ্বমানের নিরাপত্তা ও জবাবদিহিতা নিশ্চিতকরণ।
 
-💡 আপনার ভাবনা কী? এই নতুন পরিবর্তন নিয়ে আপনি কী মনে করেন? কমেন্টে আপনার মতামত জানান!
+💡 নতুন প্রযুক্তির নিয়মিত আপডেট জানা ও গঠনমূলকভাবে তা প্রয়োগ করাই বর্তমান সময়ের সেরা দক্ষতা।
 
-সূত্র: {source}
-#AINews #NewGoLearn #ArtificialIntelligence #TechUpdates #TechTrend"""
+#AINews #NewGoLearn #Technology #ArtificialIntelligence"""
 
     if not client:
         return fallback_caption, "abstract ai neural circuit", "futuristic glowing AI neural network technology circuit board hardware, no humans, cinematic 8k"
 
-    candidate_models = [config.GEMINI_MODEL, "gemini-flash-lite-latest", "gemini-2.5-flash", "gemini-flash-latest"]
+    candidate_models = ["gemini-3.5-flash", "gemini-3.5-flash-lite", config.GEMINI_MODEL, "gemini-3.8-flash"]
     for m in candidate_models:
+        if not m:
+            continue
         try:
             resp = client.models.generate_content(
                 model=m,
@@ -300,13 +307,13 @@ def generate_ai_news_post(article: Dict[str, str]) -> Tuple[str, str, str]:
             raw = (resp.text or "").strip()
             data = json.loads(raw)
             caption = data.get("caption", "").strip() or fallback_caption
-            kw = data.get("keyword", "artificial intelligence tech")
-            v_prompt = data.get("visual_prompt", "futuristic AI neural network technology")
+            kw = data.get("keyword", "abstract ai neural circuit")
+            v_prompt = data.get("visual_prompt", "futuristic AI neural network technology circuit board, no humans, 8k")
             return caption, kw, v_prompt
         except Exception as e:
             logger.warning(f"Model {m} failed for news post: {e}. Trying next...")
 
-    return fallback_caption, "artificial intelligence news", "futuristic artificial intelligence glowing technology concept"
+    return fallback_caption, "abstract ai neural circuit", "futuristic artificial intelligence glowing technology concept, no humans, 8k"
 
 
 def generate_ai_tips_post() -> Tuple[str, str, str]:
@@ -318,50 +325,53 @@ def generate_ai_tips_post() -> Tuple[str, str, str]:
     selected_topic = random.choice(CURATED_TIPS_TOPICS)
 
     system_instruction = """
-আপনি 'NewGo Learn' টেক পেজের একজন অভিজ্ঞ এআই ট্রেইনার এবং প্রফেশনাল কন্টেন্ট ক্রিয়েটর।
-আপনার কাজ হলো সাধারণ শিক্ষার্থী, ফ্রিল্যান্সার ও পেশাজীবীদের জন্য অত্যন্ত কাজের ও ব্যবহারিক একটি "AI Tips & Tricks" পোস্ট বাংলায় তৈরি করা।
+আপনি 'NewGo Learn' টেক পেজের একজন অভিজ্ঞ এআই ট্রেইনার ও কনটেন্ট ক্রিয়েটর।
+আপনার কাজ হলো শিক্ষার্থী ও প্রফেশনালদের জন্য এআই টিপস ও ট্রিকস নিয়ে শুধুমাত্র বাংলায় একটি অত্যন্ত ব্যবহারিক, স্পষ্ট ও টু-দ্য-পয়েন্ট (To-The-Point) ফেসবুক পোস্ট তৈরি করা।
 
-পোস্টের ফরম্যাট:
-১. চোখ ধাঁধানো ক্যাপচি হেডলাইন (যেমন: 💡 ChatGPT সিক্রেট ট্রিকস: কাজের গতি দ্বিগুণ করার সহজ উপায়!)
-২. সমস্যার বিবরণ ও কীভাবে এআই দিয়ে এটি ৫ মিনিটে সমাধান করা যায়
-৩. স্টেপ-বাই-স্টেপ প্র্যাকটিক্যাল গাইড (১, ২, ৩ বা বুলেট পয়েন্টে)
-৪. বাস্তবসম্মত ১টি প্রম্পট উদাহরণ (Prompt Template) কোটেশন দিয়ে তুলে ধরা
-৫. শেষভাগে উৎসাহমূলক আহ্বান ও প্রশ্ন (যেমন: "আজই ট্রাই করে দেখুন! আপনার প্রিয় এআই টুল কোনটি?")
-৬. প্রাসঙ্গিক ৫টি ট্রেন্ডিং হ্যাশট্যাগ (#AITips #NewGoLearn #ChatGPTTricks #ProductivityHacks #TechTips)
+কঠোর নিয়মাবলী:
+১. শুধুমাত্র খাঁটি বাংলা (Sudhu Bangla): সম্পূর্ণ পোস্টটি সহজবোধ্য ও সাবলীল বাংলায় হতে হবে। কোনো অপ্রয়োজনীয় ইংরেজি বাক্য বা রূপক ব্যবহার করা যাবে না।
+২. টু-দ্য-পয়েন্ট ও সংক্ষিপ্ত (To-The-Point): পোস্টটির মোট দৈর্ঘ্য ৮০ থেকে ১০০ শব্দের মধ্যে সীমাবদ্ধ হতে হবে। কোনো অহেতুক লম্বা ভূমিকা ছাড়া সরাসরি কার্যকর টিপস দিন।
+৩. ফরম্যাট:
+   - আকর্ষণীয় বাংলা হেডলাইন (💡 বা ⚡ ইমোজি সহ)।
+   - সমস্যার সমাধান এআই দিয়ে কীভাবে সহজে করা যায় (১টি ছোট বাক্যে)।
+   - ৩টি ধাপে বা পয়েন্টে সরাসরি প্র্যাকটিক্যাল গাইড (👉 দিয়ে)।
+   - ১টি কার্যকর বাস্তব প্রম্পট উদাহরণ (যদি প্রযোজ্য হয়)।
+   - শেষে প্রাসঙ্গিক ৩-৪টি হ্যাশট্যাগ (#AITips #NewGoLearn #Productivity #AIHacks)।
 
 ⚠️ কঠোর ছবি নির্দেশিকা (STRICT IMAGE RULES - ABSOLUTELY NO HUMANS / NO FEMALES):
 - ছবিতে কোনো মানুষ, নারী, পুরুষ, অবয়ব, মুখমণ্ডল, হাত বা প্রতিকৃতি থাকা সম্পূর্ণ নিষেধ (Strictly NO humans, NO women, NO female figures, NO men, NO persons, NO faces, NO portraits, NO human hands)।
-- ছবির প্রম্পট (visual_prompt) হতে হবে শুধুমাত্র বিমূর্ত প্রযুক্তি ও আধুনিক ইলেকট্রনিক্স: যেমন glowing holographic code lines, abstract 3D geometric AI nodes, cybernetic data stream, futuristic minimalist workstation with empty chair and glowing code monitors (strictly no people)।
+- ছবির প্রম্পট (visual_prompt) হতে হবে ক্যাপশনের বিষয়ের সাথে হুবহু সামঞ্জস্যপূর্ণ শুধুমাত্র বিমূর্ত প্রযুক্তি: যেমন glowing holographic code lines, abstract 3D geometric AI nodes, cybernetic data stream, futuristic minimalist workstation with empty chair and glowing code monitors (strictly no people)।
 - keyword হবে কেবল টেকনিক্যাল শব্দ (যেমন: "abstract ai productivity interface", "futuristic neural code visualization")।
 
 আউটপুটটি অবশ্যই কঠোরভাবে এই JSON ফরম্যাটে দিতে হবে:
 {
-  "caption": "সম্পূর্ণ ফেসবুক পোস্টটি এখানে থাকবে...",
+  "caption": "সম্পূর্ণ বাংলা টু-দ্য-পয়েন্ট পোস্টটি এখানে থাকবে...",
   "keyword": "ছবির জন্য ২-৩ শব্দের ইংরেজি কি-ওয়ার্ড (যেমন: abstract ai code interface)",
-  "visual_prompt": "ছবি তৈরির জন্য ইংরেজি প্রম্পট (যেমন: An abstract 3D visualization of glowing AI algorithms and glowing holographic neural networks on a futuristic dark background, no humans, cinematic 8k)"
+  "visual_prompt": "ক্যাপশনের সাথে সামঞ্জস্যপূর্ণ ইংরেজি প্রম্পট (An abstract 3D visualization of glowing AI algorithms and glowing holographic neural networks on a futuristic dark background, no humans, cinematic 8k)"
 }
 """
 
-    prompt = f"টপিক: {selected_topic}\nঅনুগ্রহ করে এই বিষয়ের ওপর ব্যবহারিক ও সহজে কাজে লাগানোর মতো একটি চমৎকার বাংলা টিপস অ্যান্ড ট্রিকস পোস্ট তৈরি করুন।"
+    prompt = f"টপিক: {selected_topic}\nঅনুগ্রহ করে এই বিষয়ের ওপর শুধুমাত্র বাংলায় একটি অত্যন্ত ব্যবহারিক ও টু-দ্য-পয়েন্ট বাংলা টিপস অ্যান্ড ট্রিকস পোস্ট তৈরি করুন।"
 
-    fallback_caption = f"""💡 এআই টিপস অ্যান্ড ট্রিকস: {selected_topic}
+    fallback_caption = f"""💡 এআই প্রোডাক্টিভিটি ট্রিকস: {selected_topic}
 
-কাজের গতি কয়েকগুণ বাড়িয়ে নিতে কৃত্রিম বুদ্ধিমত্তা (AI) এখন সবচেয়ে বড় হাতিয়ার! নিচে দেওয়া সহজ ট্রিকটি ব্যবহার করে আপনার প্রতিদিনের ঘণ্টার পর ঘণ্টা সময় বাঁচাতে পারেন:
+কাজের গতি বাড়াতে এআই প্রযুক্তির সঠিক প্রয়োগ অত্যন্ত কার্যকর:
 
-📌 প্র্যাকটিক্যাল স্টেপসমূহ:
-১. পরিষ্কার ও স্পষ্ট নির্দেশনা দিন: এআইকে কোনো সাধারণ নির্দেশ না দিয়ে конкретный রোল দিন।
-২. উদাহরণ যুক্ত করুন: আপনি ঠিক যেমন আউটপুট চান, তার একটি ছোট নমুনা দিন।
-৩. আউটপুট যাচাই করে স্টেপ-বাই-স্টেপ আরও উন্নত করুন।
+👉 স্পষ্ট ও নির্দিষ্ট নির্দেশনা দিন: এআইকে সাধারণ নির্দেশ না দিয়ে নির্দিষ্ট রোল ও প্রেক্ষাপট বুঝিয়ে দিন।
+👉 নমুনা ফলাফল যুক্ত করুন: আপনি ঠিক যেমন আউটপুট চান, তার একটি ছোট উদাহরণ দিন।
+👉 ধাপে ধাপে পরিমার্জন করুন: একবারে সম্পূর্ণ কাজ না চেয়ে ছোট ছোট ধাপে ফলাফল নিখুঁত করুন।
 
-💬 আপনি কি নিয়মিত এআই টুল ব্যবহার করছেন? আপনার পছন্দের ট্রিক কোনটি? কমেন্টে জানান!
+💡 সঠিক প্রম্পটিং টেকনিক জানলে প্রতিদিনের কাজের সময় বাঁচানো সহজ হয়।
 
-#AITips #NewGoLearn #Productivity #ChatGPTTricks #AIHacks"""
+#AITips #NewGoLearn #Productivity #AIHacks"""
 
     if not client:
-        return fallback_caption, "ai productivity tips", "futuristic holographic artificial intelligence assistant workspace"
+        return fallback_caption, "ai productivity tips", "futuristic holographic artificial intelligence assistant workspace, no humans, 8k"
 
-    candidate_models = [config.GEMINI_MODEL, "gemini-flash-lite-latest", "gemini-2.5-flash", "gemini-flash-latest"]
+    candidate_models = ["gemini-3.5-flash", "gemini-3.5-flash-lite", config.GEMINI_MODEL, "gemini-3.8-flash"]
     for m in candidate_models:
+        if not m:
+            continue
         try:
             resp = client.models.generate_content(
                 model=m,
@@ -375,13 +385,13 @@ def generate_ai_tips_post() -> Tuple[str, str, str]:
             raw = (resp.text or "").strip()
             data = json.loads(raw)
             caption = data.get("caption", "").strip() or fallback_caption
-            kw = data.get("keyword", "ai productivity tips")
-            v_prompt = data.get("visual_prompt", "futuristic workspace with glowing AI productivity holographic display")
+            kw = data.get("keyword", "abstract ai code interface")
+            v_prompt = data.get("visual_prompt", "futuristic workspace with glowing AI productivity holographic display, no humans, 8k")
             return caption, kw, v_prompt
         except Exception as e:
             logger.warning(f"Model {m} failed for tips post: {e}. Trying next...")
 
-    return fallback_caption, "ai productivity tips", "futuristic holographic workspace with artificial intelligence"
+    return fallback_caption, "abstract ai code interface", "futuristic holographic workspace with artificial intelligence, no humans, 8k"
 
 
 # ==============================================================================
@@ -422,13 +432,22 @@ def run_autonomous_content_agent(forced_mode: Optional[str] = None) -> Dict[str,
         topic_label = "💡 AI Tips & Tricks"
         news_hash = None
 
-    # Generate matching visual
-    image_url = get_free_image_url(keyword, visual_prompt, seed=random.randint(100, 999999))
+    # Generate matching visual synchronized with caption via image_service
+    image_url = get_free_image_url(
+        search_keyword=keyword,
+        visual_prompt=visual_prompt,
+        seed=random.randint(100, 999999),
+        caption=caption,
+    )
+
+    # Cache image locally to prevent browser rate limits and Pollinations yellow banners
+    local_path, web_url = fetch_and_save_image_locally(image_url, filename_prefix="agent")
 
     # Save to Draft Store
     draft = add_draft(
         caption=caption,
-        image_url=image_url,
+        image_url=web_url or image_url,
+        local_file_path=local_path,
         topic=topic_label,
         keyword=keyword,
         media_type="photo",
