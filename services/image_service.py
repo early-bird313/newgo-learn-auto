@@ -142,6 +142,31 @@ def get_free_image_url(
     else:
         safe_search_keyword = f"{safe_search_keyword} abstract technology circuit"
 
+    # 0. Hugging Face Inference API (if provider == 'huggingface' and token configured)
+    if provider == "huggingface" and config.HUGGINGFACE_API_TOKEN:
+        try:
+            raw_prompt = visual_prompt.strip() if visual_prompt else safe_search_keyword
+            safe_visual_prompt = sanitize_prompt_for_no_humans(raw_prompt)
+            hf_url = "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell"
+            hf_headers = {"Authorization": f"Bearer {config.HUGGINGFACE_API_TOKEN}"}
+            logger.info("Attempting image generation via Hugging Face Inference API...")
+            hf_res = requests.post(hf_url, headers=hf_headers, json={"inputs": safe_visual_prompt}, timeout=25)
+            if hf_res.status_code == 200 and len(hf_res.content) > 10000:
+                config.UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+                filename = f"hf_flux_{uuid.uuid4().hex[:8]}.jpg"
+                dest_path = config.UPLOADS_DIR / filename
+                with open(dest_path, "wb") as f:
+                    f.write(hf_res.content)
+                logger.info(f"Successfully generated image via Hugging Face FLUX.1: {dest_path}")
+                return f"/uploads/{filename}"
+            else:
+                logger.info(
+                    f"Hugging Face serverless image endpoint returned {hf_res.status_code}. "
+                    "Routing seamlessly to Pollinations FLUX engine."
+                )
+        except Exception as e:
+            logger.warning(f"Hugging Face generation attempt failed: {e}. Routing to Pollinations FLUX engine.")
+
     # 1. Pexels API (if configured)
     if provider == "pexels" and config.PEXELS_API_KEY:
         try:
@@ -167,18 +192,18 @@ def get_free_image_url(
         except Exception as e:
             logger.warning(f"Failed to fetch from Unsplash: {e}")
 
-    # 3. Pollinations AI (Default: 100% Free with turbo fast generation)
+    # 3. Pollinations AI (FLUX & Turbo High-Quality Engine)
     raw_prompt = visual_prompt.strip() if visual_prompt else safe_search_keyword
     safe_visual_prompt = sanitize_prompt_for_no_humans(raw_prompt)
 
     encoded_prompt = urllib.parse.quote(safe_visual_prompt)
     current_seed = seed if seed is not None else random.randint(100, 999999)
-    # Using model=turbo avoids heavy queue rate-limits
+    model_name = getattr(config, "POLLINATIONS_MODEL", "flux") or "flux"
     pollinations_url = (
-        f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1200&height=630&nologo=true&model=turbo&seed={current_seed}"
+        f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1200&height=630&nologo=true&model={model_name}&seed={current_seed}"
     )
 
-    logger.info(f"Using Pollinations AI image URL: {pollinations_url}")
+    logger.info(f"Using Pollinations AI ({model_name}) image URL: {pollinations_url}")
     return pollinations_url
 
 
@@ -197,6 +222,12 @@ def fetch_and_save_image_locally(image_url: str, filename_prefix: str = "draft")
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     }
+
+    # If already a saved local upload path, return directly
+    if image_url and image_url.startswith("/uploads/"):
+        local_target = config.BASE_DIR / image_url.lstrip("/")
+        if local_target.exists():
+            return str(local_target), image_url
 
     # Attempt to download from image_url
     if image_url and image_url.startswith("http"):

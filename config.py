@@ -42,8 +42,10 @@ SCHEDULE_MORNING_MINUTE = int(os.getenv("SCHEDULE_MORNING_MINUTE", "0"))
 SCHEDULE_EVENING_HOUR = int(os.getenv("SCHEDULE_EVENING_HOUR", "20"))
 SCHEDULE_EVENING_MINUTE = int(os.getenv("SCHEDULE_EVENING_MINUTE", "0"))
 
-# Image Service Provider (pollinations / unsplash / pexels)
+# Image Service Provider (pollinations / huggingface / unsplash / pexels)
 IMAGE_PROVIDER = os.getenv("IMAGE_PROVIDER", "pollinations").strip().lower()
+HUGGINGFACE_API_TOKEN = os.getenv("HUGGINGFACE_API_TOKEN", os.getenv("HF_TOKEN", "")).strip()
+POLLINATIONS_MODEL = os.getenv("POLLINATIONS_MODEL", "flux").strip().lower()
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY", "").strip()
 UNSPLASH_ACCESS_KEY = os.getenv("UNSPLASH_ACCESS_KEY", "").strip()
 
