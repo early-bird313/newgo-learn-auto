@@ -30,10 +30,10 @@ FB_GRAPH_API_VERSION = os.getenv("FB_GRAPH_API_VERSION", "v21.0").strip()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash").strip()
 
-# Auto-Posting Configuration (AI, Automation, Productivity & Digital Skills)
+# Auto-Posting Configuration (AI Teaching, Exploring, Making & Project Building)
 DEFAULT_POST_TOPIC = os.getenv(
     "DEFAULT_POST_TOPIC",
-    "AI Tools & Technologies, Smart Tips & Useful Tricks, AI & Work Automation, Learning Resources, Productivity & Digital Skills, and New Ideas for the Future",
+    "AI Teaching & Tutorials, Hands-on Project Building, Exploring Latest AI Breakthroughs, Prompt Engineering, and Practical Workflows",
 ).strip()
 
 # Twice Daily Draft Schedule: Morning 9:00 AM & Night 8:00 PM (Bangladesh Time)

@@ -127,7 +127,7 @@ def generate_page_post(topic_hint: str = "") -> Tuple[str, str, str]:
 
     if not client:
         # Fallback post if Gemini key is not set
-        caption = f"আসসালামু আলাইকুম! 🚀\n\nপ্রযুক্তির যুগে নিজেকে একধাপ এগিয়ে রাখতে প্রতিদিন নতুন নতুন ডিজিটাল স্কিলস ও এআই টুলস শিখুন। স্মার্ট কাজই আপনাকে সফল করে তুলবে।\n\n#AITools #Automation #Productivity #NewGoLearn"
+        caption = f"আসসালামু আলাইকুম! 🚀\n\nপ্রযুক্তির যুগে নিজেকে একধাপ এগিয়ে রাখতে প্রতিদিন নতুন নতুন এআই টুলস শিখুন এবং নিজে হাতে প্রজেক্ট তৈরি করুন। স্মার্ট কাজই আপনাকে সফল করে তুলবে।\n\n#AITeaching #AIBuilder #AIExploring #Productivity"
         return caption, "abstract futuristic ai technology circuit", "A glowing abstract futuristic AI neural network circuit board, digital data stream, no humans, cinematic 8k"
 
     prompt = f"""
@@ -184,5 +184,5 @@ JSON স্কিমা:
         except Exception as e:
             logger.warning(f"Model '{model_name}' failed for post generation: {e}")
 
-    fallback_caption = f"আসসালামু আলাইকুম! 🚀\n\nপ্রযুক্তির যুগে নিজেকে একধাপ এগিয়ে রাখতে প্রতিদিন নতুন নতুন ডিজিটাল স্কিলস ও এআই টুলস শিখুন। স্মার্ট কাজই আপনাকে সফল করে তুলবে।\n\n#AITools #Automation #Productivity #NewGoLearn"
+    fallback_caption = f"আসসালামু আলাইকুম! 🚀\n\nপ্রযুক্তির যুগে নিজেকে একধাপ এগিয়ে রাখতে প্রতিদিন নতুন নতুন এআই টুলস শিখুন এবং নিজে হাতে প্রজেক্ট তৈরি করুন। স্মার্ট কাজই আপনাকে সফল করে তুলবে।\n\n#AITeaching #AIBuilder #AIExploring #Productivity"
     return fallback_caption, "futuristic artificial intelligence workspace technology", "A modern futuristic workspace with glowing artificial intelligence holographic screens, high-tech aesthetic, 8k"

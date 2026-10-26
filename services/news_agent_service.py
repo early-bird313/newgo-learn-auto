@@ -40,19 +40,25 @@ AI_NEWS_FEEDS = [
     },
 ]
 
-# Curated library of real-world AI tips, prompts & productivity hacks (Strictly Abstract / Tech only)
+# Curated library of real-world AI teaching, exploring & project building topics (Strictly Abstract / Tech only)
 CURATED_TIPS_TOPICS = [
-    "ChatGPT Advanced Prompt Engineering: Few-shot prompting and Chain-of-Thought technique for accurate answers",
-    "How to use Claude & Gemini to summarize long PDF research papers and extract key data tables in minutes",
-    "Top 5 Free AI Tools for vector graphics, logo icons, and automated workflow diagrams in 2026",
-    "Automating daily repetitive work using AI and Google Sheets/Excel: Best formulas and workflow tips",
-    "How to generate high-converting technical documentation and copywriting with AI without repetitive phrasing",
-    "AI automation for spreadsheets and data analysis: Formula generation, cleaning messy data, and trend mapping",
-    "Midjourney and Flux prompt tricks: How to generate cinematic 3D abstract product renders, glowing circuits, and tech hardware (no humans)",
-    "How to build custom automated workflows using Free open-source AI models for productivity",
-    "Audio & Audio Spectrum AI tricks: Removing background noise, audio frequency enhancement, and clean sound synthesis",
-    "Secret AI search tricks: How to use Perplexity and Gemini Search to find deep research data with citations",
-    "Coding with AI: How beginners can debug code, build small web tools, and learn programming faster",
+    # 🎓 AI Teaching & Tutorials
+    "AI Teaching: Prompt Engineering Mastery — How to use System Instructions, Role Prompting, and Few-shot examples for perfect outputs",
+    "AI Teaching: How beginners can use Claude and ChatGPT to learn programming, debug code, and build working tools faster",
+    "AI Teaching: How to use AI to analyze complex data tables, spreadsheets, and messy CSV files in seconds",
+    "AI Teaching: 5 common prompt mistakes people make every day and how to fix them for 10x better responses",
+
+    # 🔍 AI Exploring & Deep Dives
+    "AI Exploring: Deep dive into open-source local LLMs (DeepSeek, Llama 3, Ollama) and how to run AI privately offline for free",
+    "AI Exploring: Autonomous AI Agents vs Chatbots — Understanding how AI executes multi-step workflows and web tasks",
+    "AI Exploring: Top free open-source AI tools for developers and creators in 2026",
+    "AI Exploring: Secrets of multi-modal AI — Combining text, audio, and vision for powerful automated solutions",
+
+    # 🛠️ AI Making & Project Building
+    "AI Making: Step-by-step guide to building a custom automated AI agent that monitors news and writes summaries",
+    "AI Making: How to build personal AI assistants connected to your own PDFs, notes, and documents using RAG workflows",
+    "AI Making: Building powerful automated workflows using n8n, webhooks, and AI APIs without writing complex backend code",
+    "AI Making: How to create an automated social media posting bot with Python and Free Gemini API",
 ]
 
 
@@ -240,19 +246,19 @@ def generate_ai_news_post(article: Dict[str, str]) -> Tuple[str, str, str]:
     source = article.get("source", "Tech News")
 
     system_instruction = """
-আপনি 'NewGo Learn' টেক ও এআই ফেসবুক পেজের একজন দক্ষ সোশ্যাল মিডিয়া কনটেন্ট ক্রিয়েটর।
-আপনার কাজ হলো আন্তর্জাতিক শীর্ষ এআই সংবাদ নিয়ে ফেসবুকের জন্য শুধুমাত্র বাংলায় একটি অত্যন্ত আকর্ষণীয়, সংক্ষিপ্ত ও টু-দ্য-পয়েন্ট (To-The-Point) পোস্ট তৈরি করা।
+আপনি এআই শিক্ষাদান, এক্সপ্লোরেশন ও মেকিং (AI Teaching, Exploring & Building) ভিত্তিক একটি ফেসবুক পেজের ক্রিয়েটর ও এআই শিক্ষক।
+আপনার কাজ হলো আন্তর্জাতিক শীর্ষ এআই সংবাদ নিয়ে আপনার পেজের ফলোয়ারদের জন্য শুধুমাত্র বাংলায় একটি অত্যন্ত আকর্ষণীয়, সংক্ষিপ্ত, শিক্ষণীয় ও টু-দ্য-পয়েন্ট (To-The-Point) পোস্ট তৈরি করা।
 
 কঠোর নিয়মাবলী:
-১. শুধুমাত্র খাঁটি ও প্রমিত বাংলা (Sudhu Bangla): সম্পূর্ণ পোস্টটি বাংলায় হতে হবে। অপ্রয়োজনীয় ইংরেজি বাক্য বা জটিল মিশ্রণ পরিহার করুন।
+১. শুধুমাত্র খাঁটি ও প্রমিত বাংলা (Sudhu Bangla): সম্পূর্ণ পোস্টটি সাবলীল বাংলায় হতে হবে। অপ্রয়োজনীয় ইংরেজি বাক্য বা জটিল মিশ্রণ পরিহার করুন।
 ২. টু-দ্য-পয়েন্ট ও সংক্ষিপ্ত (To-The-Point): পোস্টটির মোট দৈর্ঘ্য ৮০ থেকে ১০০ শব্দের মধ্যে সীমাবদ্ধ হতে হবে। অহেতুক লম্বা বা অপ্রয়োজনীয় ভূমিকা সম্পূর্ণ নিষিদ্ধ।
-৩. ক্লিকবেইট ও নাটকীয়তা সম্পূর্ণ নিষিদ্ধ: কোনো অহেতুক ভীতিপ্রদর্শনকারী বা নাটকীয় প্রশ্ন (যেমন: "মানুষের জীবন কেড়ে নিতে পারে কি?", "চরম বিতর্ক", "ভয়াবহ আশঙ্কা") করা সম্পূর্ণ নিষিদ্ধ। খবরটি হবে সম্পূর্ণ তথ্যবহুল, বাস্তবসম্মত ও পেশাদার।
+৩. ক্লিকবেইট ও নাটকীয়তা সম্পূর্ণ নিষিদ্ধ: কোনো অহেতুক ভীতিপ্রদর্শনকারী বা নাটকীয় প্রশ্ন করা সম্পূর্ণ নিষিদ্ধ। খবরটি হবে সম্পূর্ণ তথ্যবহুল, বাস্তবসম্মত ও শিক্ষণীয়।
 ৪. ফরম্যাট:
    - নজরকাড়া সংক্ষিপ্ত বাংলা হেডলাইন (১টি উপযুক্ত ইমোজি সহ যেমন ⚡, 🌐, 🚀)।
    - মূল খবরটি সংক্ষেপে ১-২টি বাক্যে সরাসরি তুলে ধরুন।
    - ৩টি সংক্ষিপ্ত বুলেট পয়েন্টে (👉 দিয়ে) মূল তথ্য/হাইলাইটস।
-   - ১টি সংক্ষিপ্ত ইতিবাচক শিক্ষণীয় বা সতর্কতামূলক কথা।
-   - শেষে প্রাসঙ্গিক ৩-৪টি হ্যাশট্যাগ (#AINews #NewGoLearn #Technology #ArtificialIntelligence)।
+   - ১টি সংক্ষিপ্ত ইতিবাচক শিক্ষণীয় বা প্রয়োগযোগ্য কথা।
+   - শেষে প্রাসঙ্গিক ৩-৪টি হ্যাশট্যাগ (#AITeaching #AIExploring #AIBuilder #ArtificialIntelligence #TechUpdates)।
 
 ⚠️ কঠোর ছবি নির্দেশিকা (STRICT IMAGE RULES - ABSOLUTELY NO HUMANS / NO FEMALES):
 - ছবিতে কোনো মানুষ, নারী, পুরুষ, মুখমণ্ডল, হাত বা মানব অবয়ব থাকা সম্পূর্ণ নিষেধ (Strictly NO humans, NO women, NO female figures, NO men, NO persons, NO faces, NO portraits, NO human hands)।
@@ -272,7 +278,7 @@ def generate_ai_news_post(article: Dict[str, str]) -> Tuple[str, str, str]:
 খবরের উৎস: {source}
 খবরের সংক্ষিপ্ত বিবরণ: {summary}
 
-অনুগ্রহ করে উপরের এআই খবরটি নিয়ে 'NewGo Learn' পেজের জন্য শুধুমাত্র বাংলায় একটি তথ্যবহুল, সংক্ষিপ্ত ও টু-দ্য-পয়েন্ট বাংলা ফেসবুক পোস্ট তৈরি করুন।
+অনুগ্রহ করে উপরের এআই খবরটি নিয়ে আমাদের পেজের জন্য শুধুমাত্র বাংলায় একটি তথ্যবহুল, শিক্ষণীয়, সংক্ষিপ্ত ও টু-দ্য-পয়েন্ট বাংলা ফেসবুক পোস্ট তৈরি করুন।
 """
 
     fallback_caption = f"""⚡ এআই প্রযুক্তি সংবাদ: {title}
@@ -285,7 +291,7 @@ def generate_ai_news_post(article: Dict[str, str]) -> Tuple[str, str, str]:
 
 💡 নতুন প্রযুক্তির নিয়মিত আপডেট জানা ও গঠনমূলকভাবে তা প্রয়োগ করাই বর্তমান সময়ের সেরা দক্ষতা।
 
-#AINews #NewGoLearn #Technology #ArtificialIntelligence"""
+#AITeaching #AIExploring #AIBuilder #Technology #ArtificialIntelligence"""
 
     if not client:
         return fallback_caption, "abstract ai neural circuit", "futuristic glowing AI neural network technology circuit board hardware, no humans, cinematic 8k"
@@ -325,18 +331,18 @@ def generate_ai_tips_post() -> Tuple[str, str, str]:
     selected_topic = random.choice(CURATED_TIPS_TOPICS)
 
     system_instruction = """
-আপনি 'NewGo Learn' টেক পেজের একজন অভিজ্ঞ এআই ট্রেইনার ও কনটেন্ট ক্রিয়েটর।
-আপনার কাজ হলো শিক্ষার্থী ও প্রফেশনালদের জন্য এআই টিপস ও ট্রিকস নিয়ে শুধুমাত্র বাংলায় একটি অত্যন্ত ব্যবহারিক, স্পষ্ট ও টু-দ্য-পয়েন্ট (To-The-Point) ফেসবুক পোস্ট তৈরি করা।
+আপনি এআই শিক্ষাদান, এক্সপ্লোরেশন ও মেকিং (AI Teaching, Exploring & Building) পেজের একজন অভিজ্ঞ এআই শিক্ষক ও ক্রিয়েটর।
+আপনার কাজ হলো শিক্ষার্থী ও ডেভেলপারদের জন্য বাস্তবসম্মত এআই টিপস, টিউটোরিয়াল ও মেকিং গাইড নিয়ে শুধুমাত্র বাংলায় একটি অত্যন্ত ব্যবহারিক, স্পষ্ট ও টু-দ্য-পয়েন্ট (To-The-Point) ফেসবুক পোস্ট তৈরি করা।
 
 কঠোর নিয়মাবলী:
-১. শুধুমাত্র খাঁটি বাংলা (Sudhu Bangla): সম্পূর্ণ পোস্টটি সহজবোধ্য ও সাবলীল বাংলায় হতে হবে। কোনো অপ্রয়োজনীয় ইংরেজি বাক্য বা রূপক ব্যবহার করা যাবে না।
-২. টু-দ্য-পয়েন্ট ও সংক্ষিপ্ত (To-The-Point): পোস্টটির মোট দৈর্ঘ্য ৮০ থেকে ১০০ শব্দের মধ্যে সীমাবদ্ধ হতে হবে। কোনো অহেতুক লম্বা ভূমিকা ছাড়া সরাসরি কার্যকর টিপস দিন।
+১. শুধুমাত্র খাঁটি বাংলা (Sudhu Bangla): সম্পূর্ণ পোস্টটি সহজবোধ্য ও সাবলীল বাংলায় হতে হবে। কোনো অপ্রয়োজনীয় জটিল ভাষা ব্যবহার করা যাবে না।
+২. টু-দ্য-পয়েন্ট ও সংক্ষিপ্ত (To-The-Point): পোস্টটির মোট দৈর্ঘ্য ৮০ থেকে ১০০ শব্দের মধ্যে সীমাবদ্ধ হতে হবে। কোনো অহেতুক ভূমিকা ছাড়া সরাসরি কার্যকর টিপস ও নির্দেশনা দিন।
 ৩. ফরম্যাট:
    - আকর্ষণীয় বাংলা হেডলাইন (💡 বা ⚡ ইমোজি সহ)।
-   - সমস্যার সমাধান এআই দিয়ে কীভাবে সহজে করা যায় (১টি ছোট বাক্যে)।
+   - সমস্যার সমাধান এআই দিয়ে কীভাবে সহজে করা যায় বা নিজে কীভাবে তৈরি করা যায় (১টি ছোট বাক্যে)।
    - ৩টি ধাপে বা পয়েন্টে সরাসরি প্র্যাকটিক্যাল গাইড (👉 দিয়ে)।
-   - ১টি কার্যকর বাস্তব প্রম্পট উদাহরণ (যদি প্রযোজ্য হয়)।
-   - শেষে প্রাসঙ্গিক ৩-৪টি হ্যাশট্যাগ (#AITips #NewGoLearn #Productivity #AIHacks)।
+   - ১টি কার্যকর বাস্তব প্রম্পট বা বাস্তব উদাহরণ (যদি প্রযোজ্য হয়)।
+   - শেষে প্রাসঙ্গিক ৩-৪টি হ্যাশট্যাগ (#AITeaching #AIBuilder #AIExploring #ArtificialIntelligence #LearnAI)।
 
 ⚠️ কঠোর ছবি নির্দেশিকা (STRICT IMAGE RULES - ABSOLUTELY NO HUMANS / NO FEMALES):
 - ছবিতে কোনো মানুষ, নারী, পুরুষ, অবয়ব, মুখমণ্ডল, হাত বা প্রতিকৃতি থাকা সম্পূর্ণ নিষেধ (Strictly NO humans, NO women, NO female figures, NO men, NO persons, NO faces, NO portraits, NO human hands)।
@@ -351,19 +357,19 @@ def generate_ai_tips_post() -> Tuple[str, str, str]:
 }
 """
 
-    prompt = f"টপিক: {selected_topic}\nঅনুগ্রহ করে এই বিষয়ের ওপর শুধুমাত্র বাংলায় একটি অত্যন্ত ব্যবহারিক ও টু-দ্য-পয়েন্ট বাংলা টিপস অ্যান্ড ট্রিকস পোস্ট তৈরি করুন।"
+    prompt = f"টপিক: {selected_topic}\nঅনুগ্রহ করে এই বিষয়ের ওপর শুধুমাত্র বাংলায় একটি অত্যন্ত ব্যবহারিক, শিক্ষণীয় ও টু-দ্য-পয়েন্ট বাংলা টিপস/টিউটোরিয়াল পোস্ট তৈরি করুন।"
 
-    fallback_caption = f"""💡 এআই প্রোডাক্টিভিটি ট্রিকস: {selected_topic}
+    fallback_caption = f"""💡 এআই শেখা ও তৈরির কৌশল: {selected_topic}
 
-কাজের গতি বাড়াতে এআই প্রযুক্তির সঠিক প্রয়োগ অত্যন্ত কার্যকর:
+কাজের গতি বাড়াতে এবং এআই দিয়ে নতুন প্রজেক্ট বানাতে এই নিয়মগুলো মেনে চলুন:
 
-👉 স্পষ্ট ও নির্দিষ্ট নির্দেশনা দিন: এআইকে সাধারণ নির্দেশ না দিয়ে নির্দিষ্ট রোল ও প্রেক্ষাপট বুঝিয়ে দিন।
-👉 নমুনা ফলাফল যুক্ত করুন: আপনি ঠিক যেমন আউটপুট চান, তার একটি ছোট উদাহরণ দিন।
-👉 ধাপে ধাপে পরিমার্জন করুন: একবারে সম্পূর্ণ কাজ না চেয়ে ছোট ছোট ধাপে ফলাফল নিখুঁত করুন।
+👉 স্পষ্ট ও নির্দিষ্ট নির্দেশনা দিন: এআইকে সাধারণ নির্দেশ না দিয়ে নির্দিষ্ট ভূমিকা ও প্রেক্ষাপট বুঝিয়ে দিন।
+👉 নমুনা ফলাফল যুক্ত করুন: আপনি ঠিক যেমন আউটপুট চান, তার একটি ছোট উদাহরণ প্রম্পটে দিন।
+👉 ধাপে ধাপে তৈরি করুন: একবারে সম্পূর্ণ কাজ না চেয়ে ছোট ছোট ধাপে ফলাফল নিখুঁত করুন।
 
-💡 সঠিক প্রম্পটিং টেকনিক জানলে প্রতিদিনের কাজের সময় বাঁচানো সহজ হয়।
+💡 সঠিক প্রম্পটিং ও এআই টুলস আয়ত্ত করতে পারলে যেকোনো কাজের গতি বহুগুণ বাড়ানো সম্ভব।
 
-#AITips #NewGoLearn #Productivity #AIHacks"""
+#AITeaching #AIBuilder #AIExploring #Productivity #LearnAI"""
 
     if not client:
         return fallback_caption, "ai productivity tips", "futuristic holographic artificial intelligence assistant workspace, no humans, 8k"

@@ -151,7 +151,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="NewGo Learn Auto - Facebook AI Approval Dashboard",
+    title="AI Creator Studio - Facebook AI Approval Dashboard",
     description="One-Click Post Approval Dashboard, Direct Device Uploads, and AI Messenger Bot.",
     version="3.0.0",
     lifespan=lifespan,
@@ -338,7 +338,7 @@ async def home(msg: Optional[str] = None, error: Optional[str] = None):
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>NewGo Learn Auto - Post Approval Dashboard</title>
+        <title>AI Creator Studio - Post Approval Dashboard</title>
         <style>
             :root {{
                 --bg: #0b1120;
@@ -434,7 +434,7 @@ async def home(msg: Optional[str] = None, error: Optional[str] = None):
         <div class="container">
             <header>
                 <div>
-                    <h1>🚀 NewGo Learn Auto</h1>
+                    <h1>🚀 AI Creator Studio</h1>
                     <span style="color: #94a3b8; font-size: 0.9rem;">পোস্ট অনুমোদন ও ডিভাইস আপলোড ড্যাশবোর্ড</span>
                 </div>
                 <div class="header-badges">
@@ -449,7 +449,7 @@ async def home(msg: Optional[str] = None, error: Optional[str] = None):
             <div class="card" style="border-left: 4px solid #8b5cf6; background: linear-gradient(135deg, #1e1b4b 0%, #0f172a 100%);">
                 <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.6rem;">
                     <div style="display: flex; align-items: center; gap: 0.6rem;">
-                        <h3 style="margin: 0; color: #a78bfa; font-size: 1.2rem;">🤖 NewGo Autonomous AI Content Agent</h3>
+                        <h3 style="margin: 0; color: #a78bfa; font-size: 1.2rem;">🤖 Autonomous AI Content Agent</h3>
                         <span style="background: #059669; color: #d1fae5; padding: 0.15rem 0.55rem; border-radius: 12px; font-size: 0.75rem; font-weight: bold;">🟢 সার্বক্ষণিক সক্রিয়</span>
                     </div>
                     <span style="font-size: 0.85rem; color: #cbd5e1;">সর্বমোট স্বয়ংক্রিয় পোস্ট: <strong style="color: #38bdf8;">{total_agent_posts}টি</strong></span>
@@ -733,7 +733,7 @@ async def privacy_policy():
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Privacy Policy - NewGo Learn Auto</title>
+        <title>Privacy Policy - AI Creator Studio</title>
         <style>
             body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; max-width: 800px; margin: 40px auto; padding: 0 20px; color: #333; }
             h1, h2 { color: #1e3a8a; }
@@ -741,9 +741,9 @@ async def privacy_policy():
         </style>
     </head>
     <body>
-        <h1>Privacy Policy for NewGo Learn Auto</h1>
+        <h1>Privacy Policy for AI Creator Studio</h1>
         <p><strong>Effective Date:</strong> September 2026</p>
-        <p>NewGo Learn Auto ("we", "our", or "the App") respects your privacy and is committed to protecting the information of users who interact with our Facebook Page and Messenger assistant.</p>
+        <p>AI Creator Studio ("we", "our", or "the App") respects your privacy and is committed to protecting the information of users who interact with our Facebook Page and Messenger assistant.</p>
         
         <h2>1. Information We Process</h2>
         <p>When you send a message to our Facebook Page via Messenger, we receive your publicly accessible Facebook User ID (PSID) and the content of your message to provide automated, helpful customer assistance.</p>
@@ -776,7 +776,7 @@ async def terms_of_service():
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Terms of Service - NewGo Learn Auto</title>
+        <title>Terms of Service - AI Creator Studio</title>
         <style>
             body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; max-width: 800px; margin: 40px auto; padding: 0 20px; color: #333; }
             h1, h2 { color: #1e3a8a; }
@@ -784,7 +784,7 @@ async def terms_of_service():
     </head>
     <body>
         <h1>Terms of Service</h1>
-        <p>By interacting with the NewGo Learn Auto Facebook Page and assistant, you agree that responses are generated to assist with educational and inquiry needs. You agree not to send spam, abusive language, or prohibited materials.</p>
+        <p>By interacting with the Facebook Page and assistant, you agree that responses are generated to assist with educational and inquiry needs. You agree not to send spam, abusive language, or prohibited materials.</p>
     </body>
     </html>
     """)

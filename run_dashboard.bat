@@ -1,7 +1,7 @@
 @echo off
-title NewGo Learn - Facebook AI Automation
+title AI Creator Studio - Facebook AI Automation
 echo ========================================================
-echo  Starting NewGo Learn Facebook AI Content Dashboard...
+echo  Starting AI Creator Studio Facebook AI Content Dashboard...
 echo ========================================================
 echo.
 cd /d "%~dp0"

@@ -1,9 +1,6 @@
 {
-  "last_mode": "tips",
-  "seen_news_hashes": [
-    "e02280ec1000b2304c4c0680f21e78ee"
-  ],
-  "total_posts_created": 3,
-  "history": [],
-  "last_run_title": "💡 AI Tips & Tricks"
+  "last_mode": "news",
+  "seen_news_hashes": [],
+  "total_posts_created": 1,
+  "history": []
 }

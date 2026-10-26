@@ -19,7 +19,7 @@ def test_home_dashboard():
     """Verify that the home dashboard loads successfully with HTML content."""
     response = client.get("/")
     assert response.status_code == 200
-    assert "NewGo Learn Auto" in response.text
+    assert "AI Creator Studio" in response.text
     assert "text/html" in response.headers["content-type"]
 
 
