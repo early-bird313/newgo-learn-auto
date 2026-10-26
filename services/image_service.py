@@ -15,16 +15,22 @@ import config
 
 logger = logging.getLogger(__name__)
 
-# Strict filter pattern to completely disallow any human, face, or female representation
+# Strict filter pattern to completely disallow any human, face, female, robot, android, cyborg, or humanoid representation
 DISALLOWED_TERMS_PATTERN = re.compile(
-    r"\b(human|humans|humanoid|person|people|woman|women|female|females|girl|girls|lady|ladies|"
-    r"mother|sister|queen|man|men|male|boy|boys|face|faces|portrait|portraits|body|bodies|"
+    r"\b(human|humans|humanoid|humanoids|person|people|woman|women|female|females|girl|girls|lady|ladies|"
+    r"mother|sister|queen|man|men|male|males|boy|boys|face|faces|facial|portrait|portraits|body|bodies|"
     r"hand|hands|hacker|hackers|developer|developers|programmer|programmers|worker|workers|"
-    r"student|students|child|children|kid|kids|character|characters|avatar|avatars|someone|model|models)\b",
+    r"student|students|child|children|kid|kids|character|characters|avatar|avatars|someone|model|models|"
+    r"robot|robots|robotic|cyborg|cyborgs|android|androids|head|heads|eye|eyes|bust|busts|statue|statues|"
+    r"figure|figures|mannequin|mannequins|entity|entities|creature|creatures|assistant|bot|bots)\b",
     re.IGNORECASE,
 )
 
-STRICT_NEGATIVE_SUFFIX = ", no humans, no people, no faces, no women, no men, no female, abstract technology, futuristic digital circuit, clean hardware render, 3d data visualization, 8k"
+STRICT_NEGATIVE_SUFFIX = (
+    ", strictly no humans, no people, no faces, no women, no men, no female, no robot, no robotic face, no android, no cyborg, "
+    "no eyes, no head, no body, no humanoid shapes, only pure 3d abstract glowing circuit board, "
+    "clean microchip hardware processor render, server rack, digital data streams, dark aesthetic, octane render, 8k"
+)
 
 # High-resolution, guaranteed royalty-free abstract technology images (100% strictly NO humans / NO faces / NO females)
 # Used as instant, reliable fallback whenever AI image generator is throttled or rate-limited
@@ -41,13 +47,14 @@ CURATED_ABSTRACT_TECH_IMAGES = [
 
 def sanitize_prompt_for_no_humans(prompt: str) -> str:
     """
-    Strips out all human/female/portrait related terms and appends strict
-    negative constraints to ensure 100% abstract technology imagery.
+    Strips out all human, robot, android, face, and portrait terms,
+    and appends strict negative constraints to guarantee 100% abstract technology imagery.
     """
-    cleaned = DISALLOWED_TERMS_PATTERN.sub("abstract technology", prompt)
+    cleaned = DISALLOWED_TERMS_PATTERN.sub("abstract circuit hardware", prompt)
+    cleaned = re.sub(r"(abstract circuit hardware\s*)+", "abstract circuit hardware ", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
-    if not cleaned:
-        cleaned = "futuristic AI neural network glowing technology circuit"
+    if not cleaned or len(cleaned) < 10:
+        cleaned = "futuristic AI neural network glowing technology circuit microchip"
     return f"{cleaned}{STRICT_NEGATIVE_SUFFIX}"
 
 
@@ -75,15 +82,16 @@ Post Topic: {topic or 'AI & Technology'}
 Post Caption:
 \"\"\"{caption[:800]}\"\"\"
 
-⚠️ STRICT IMAGE RULES (ABSOLUTELY NO HUMANS / NO FEMALES):
+⚠️ STRICT IMAGE RULES (ABSOLUTELY NO HUMANS / NO ROBOTS / NO FACES):
 1. Strictly NO human beings, NO women, NO female figures, NO men, NO persons, NO faces, NO portraits, NO human hands, NO human bodies.
-2. The image MUST BE 100% abstract technology, futuristic digital hardware, glowing cybernetic circuits, 3D holographic data visualization, neural network nodes, or futuristic servers/microchips.
-3. The visual MUST harmonize and match the theme of the caption (e.g. if the post is about audio AI, depict glowing soundwaves and audio spectrum equalizer; if about coding, depict glowing code lines and futuristic monitors; if about security, depict cyber shield and encrypted circuit pathways).
+2. Strictly NO robots, NO robotic faces, NO cyborgs, NO androids, NO humanoid heads, NO glowing eyes, NO mannequins or anthropomorphic figures.
+3. The image MUST BE 100% abstract inanimate technology: futuristic digital hardware, glowing cybernetic circuits, 3D holographic data visualization, microchip processors, fiber optics, or futuristic server racks.
+4. The visual MUST harmonize and match the theme of the caption (e.g. if the post is about audio AI, depict glowing soundwaves and audio spectrum equalizer; if about multimodal AI, depict abstract data streams merging into a glowing central microchip processor; if about coding, depict glowing code lines on dark glass monitors; strictly no people or robots).
 
 Return strictly valid JSON with this schema:
 {{
-  "keyword": "2-3 words English search keyword (e.g. abstract ai sound spectrum)",
-  "visual_prompt": "Detailed English prompt for image generation (e.g. A futuristic 3D visualization of glowing neon soundwaves, audio spectrum equalizer, dark cybernetic background, cinematic lighting, 8k render, strictly no humans)"
+  "keyword": "2-3 words English search keyword (e.g. abstract ai microchip processor)",
+  "visual_prompt": "Detailed English prompt for image generation (e.g. Macro photography of a futuristic 3D glowing AI neural processor microchip, neon blue data streams, dark aesthetic, ray tracing, 8k render, strictly no humans, no robot, no face)"
 }}
 """
 

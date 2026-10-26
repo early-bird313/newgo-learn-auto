@@ -1,6 +1,7 @@
 {
-  "last_mode": "news",
+  "last_mode": "tips",
   "seen_news_hashes": [],
-  "total_posts_created": 1,
-  "history": []
+  "total_posts_created": 0,
+  "history": [],
+  "last_run_title": ""
 }

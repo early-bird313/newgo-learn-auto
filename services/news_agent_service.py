@@ -260,16 +260,16 @@ def generate_ai_news_post(article: Dict[str, str]) -> Tuple[str, str, str]:
    - ১টি সংক্ষিপ্ত ইতিবাচক শিক্ষণীয় বা প্রয়োগযোগ্য কথা।
    - শেষে প্রাসঙ্গিক ৩-৪টি হ্যাশট্যাগ (#AITeaching #AIExploring #AIBuilder #ArtificialIntelligence #TechUpdates)।
 
-⚠️ কঠোর ছবি নির্দেশিকা (STRICT IMAGE RULES - ABSOLUTELY NO HUMANS / NO FEMALES):
-- ছবিতে কোনো মানুষ, নারী, পুরুষ, মুখমণ্ডল, হাত বা মানব অবয়ব থাকা সম্পূর্ণ নিষেধ (Strictly NO humans, NO women, NO female figures, NO men, NO persons, NO faces, NO portraits, NO human hands)।
-- ছবির প্রম্পট (visual_prompt) হতে হবে ক্যাপশনের বিষয়ের সাথে হুবহু সামঞ্জস্যপূর্ণ শুধুমাত্র বিমূর্ত প্রযুক্তি ও আধুনিক ইলেকট্রনিক্স: যেমন glowing AI neural network, futuristic circuit board, cybernetic microchip, server rack hardware, abstract 3D data visualization, glowing futuristic tech concepts (no humans, 8k render)।
-- keyword হবে কেবল টেকনিক্যাল ইংরেজি শব্দ (যেমন: "abstract ai neural circuit", "futuristic server hardware")।
+⚠️ কঠোর ছবি নির্দেশিকা (STRICT IMAGE RULES - ABSOLUTELY NO HUMANS / NO ROBOTS / NO FACES):
+- ছবিতে কোনো মানুষ, নারী, পুরুষ, মুখমণ্ডল, হাত, রোবট, সাইবর্গ, অ্যান্ড্রয়েড বা মানব অবয়ব থাকা সম্পূর্ণ নিষেধ (Strictly NO humans, NO women, NO female figures, NO men, NO persons, NO faces, NO portraits, NO human hands, NO robots, NO cyborgs, NO androids, NO robot heads, NO glowing eyes)।
+- ছবির প্রম্পট (visual_prompt) হতে হবে শুধুমাত্র নির্জীব বিমূর্ত প্রযুক্তি ও আধুনিক ইলেকট্রনিক্স: যেমন glowing AI neural network circuits, futuristic 3D motherboard, cybernetic microchip processor, server rack hardware, abstract 3D data visualization, glowing futuristic tech concepts (strictly no humans, no robot, no face, 8k octane render)।
+- keyword হবে কেবল টেকনিক্যাল ইংরেজি শব্দ (যেমন: "abstract ai neural processor", "futuristic server hardware")।
 
 আউটপুটটি অবশ্যই কঠোরভাবে এই JSON ফরম্যাটে দিতে হবে:
 {
   "caption": "সম্পূর্ণ বাংলা টু-দ্য-পয়েন্ট পোস্টটি এখানে থাকবে...",
-  "keyword": "ছবির জন্য ২-৩ শব্দের ইংরেজি কি-ওয়ার্ড (যেমন: abstract ai neural circuit)",
-  "visual_prompt": "ক্যাপশনের সাথে সামঞ্জস্যপূর্ণ ইংরেজি ভিজ্যুয়াল প্রম্পট (A futuristic glowing AI neural circuit board with luminous blue data streams, abstract cybernetic technology, strictly no humans, cinematic 8k)"
+  "keyword": "ছবির জন্য ২-৩ শব্দের ইংরেজি কি-ওয়ার্ড (যেমন: abstract ai neural processor)",
+  "visual_prompt": "ক্যাপশনের সাথে সামঞ্জস্যপূর্ণ ইংরেজি ভিজ্যুয়াল প্রম্পট (Macro 3D render of a futuristic glowing AI neural circuit board with luminous blue data streams, abstract cybernetic microchip, strictly no humans, no robot, no face, cinematic 8k)"
 }
 """
 
@@ -344,16 +344,16 @@ def generate_ai_tips_post() -> Tuple[str, str, str]:
    - ১টি কার্যকর বাস্তব প্রম্পট বা বাস্তব উদাহরণ (যদি প্রযোজ্য হয়)।
    - শেষে প্রাসঙ্গিক ৩-৪টি হ্যাশট্যাগ (#AITeaching #AIBuilder #AIExploring #ArtificialIntelligence #LearnAI)।
 
-⚠️ কঠোর ছবি নির্দেশিকা (STRICT IMAGE RULES - ABSOLUTELY NO HUMANS / NO FEMALES):
-- ছবিতে কোনো মানুষ, নারী, পুরুষ, অবয়ব, মুখমণ্ডল, হাত বা প্রতিকৃতি থাকা সম্পূর্ণ নিষেধ (Strictly NO humans, NO women, NO female figures, NO men, NO persons, NO faces, NO portraits, NO human hands)।
-- ছবির প্রম্পট (visual_prompt) হতে হবে ক্যাপশনের বিষয়ের সাথে হুবহু সামঞ্জস্যপূর্ণ শুধুমাত্র বিমূর্ত প্রযুক্তি: যেমন glowing holographic code lines, abstract 3D geometric AI nodes, cybernetic data stream, futuristic minimalist workstation with empty chair and glowing code monitors (strictly no people)।
-- keyword হবে কেবল টেকনিক্যাল শব্দ (যেমন: "abstract ai productivity interface", "futuristic neural code visualization")।
+⚠️ কঠোর ছবি নির্দেশিকা (STRICT IMAGE RULES - ABSOLUTELY NO HUMANS / NO ROBOTS / NO FACES):
+- ছবিতে কোনো মানুষ, নারী, পুরুষ, অবয়ব, মুখমণ্ডল, হাত, রোবট, সাইবর্গ বা অ্যান্ড্রয়েড অবয়ব থাকা সম্পূর্ণ নিষেধ (Strictly NO humans, NO women, NO female figures, NO men, NO persons, NO faces, NO portraits, NO human hands, NO robots, NO cyborgs, NO androids, NO robot heads, NO glowing eyes)।
+- ছবির প্রম্পট (visual_prompt) হতে হবে শুধুমাত্র নির্জীব বিমূর্ত প্রযুক্তি: যেমন macro 3D AI circuit board, glowing microchip hardware processor, abstract neural network lines, cybernetic data stream, futuristic minimalist workstation with empty desk and glowing code monitors (strictly no people, no robots, 8k octane render)।
+- keyword হবে কেবল টেকনিক্যাল শব্দ (যেমন: "abstract ai circuit microchip", "futuristic neural hardware").
 
 আউটপুটটি অবশ্যই কঠোরভাবে এই JSON ফরম্যাটে দিতে হবে:
 {
   "caption": "সম্পূর্ণ বাংলা টু-দ্য-পয়েন্ট পোস্টটি এখানে থাকবে...",
-  "keyword": "ছবির জন্য ২-৩ শব্দের ইংরেজি কি-ওয়ার্ড (যেমন: abstract ai code interface)",
-  "visual_prompt": "ক্যাপশনের সাথে সামঞ্জস্যপূর্ণ ইংরেজি প্রম্পট (An abstract 3D visualization of glowing AI algorithms and glowing holographic neural networks on a futuristic dark background, no humans, cinematic 8k)"
+  "keyword": "ছবির জন্য ২-৩ শব্দের ইংরেজি কি-ওয়ার্ড (যেমন: abstract ai circuit microchip)",
+  "visual_prompt": "ক্যাপশনের সাথে সামঞ্জস্যপূর্ণ ইংরেজি প্রম্পট (Macro photography of a glowing 3D AI neural microchip processor on dark circuit board, blue neon fiber optics, strictly no humans, no robot, no face, cinematic 8k)"
 }
 """
 
